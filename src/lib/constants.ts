@@ -1,10 +1,42 @@
 // Central domain constants for the PMO Organizational Planning unit.
 
 export const DEPARTMENTS = [
-  { key: "FANTASY", label: "تأمین فانتزی", short: "فانتزی", color: "violet" },
-  { key: "NON_FANTASY", label: "تأمین غیر فانتزی", short: "غیرفانتزی", color: "emerald" },
-  { key: "BI", label: "هوش تجاری (BI)", short: "BI", color: "amber" },
-  { key: "COMMISSION", label: "پورسانت و گزارش‌ها", short: "پورسانت", color: "rose" },
+  {
+    key: "MANAGEMENT",
+    label: "مدیریت",
+    short: "مدیریت",
+    color: "slate",
+  },
+  {
+    key: "SUPERVISOR",
+    label: "سرپرستی",
+    short: "سرپرستی",
+    color: "yellow",
+  },
+  {
+    key: "FANTASY",
+    label: "تأمین فانتزی",
+    short: "فانتزی",
+    color: "violet",
+  },
+  {
+    key: "NON_FANTASY",
+    label: "تأمین غیر فانتزی",
+    short: "غیرفانتزی",
+    color: "emerald",
+  },
+  {
+    key: "BI",
+    label: "هوش تجاری (BI)",
+    short: "BI",
+    color: "amber",
+  },
+  {
+    key: "COMMISSION",
+    label: "پورسانت و گزارش‌ها",
+    short: "پورسانت",
+    color: "rose",
+  },
 ] as const;
 
 export type DepartmentKey = (typeof DEPARTMENTS)[number]["key"];
