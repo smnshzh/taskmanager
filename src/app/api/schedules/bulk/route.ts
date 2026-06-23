@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentMember } from "@/lib/auth";
+import { getCurrentMember, isManagerOfGroup, getManagedGroupIds } from "@/lib/auth";
 
 // POST /api/schedules/bulk
 // Body: { schedules: Array<{taskName, dayOfWeek, startTime, endTime, assigneeHandle, groupId}> }
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     const memberByHandle = new Map(allMembers.map((m) => [m.handle, m.id]));
 
     // MANAGER access check
-    const myGroupId = me.managedGroup?.id;
+    const myManagedIds = getManagedGroupIds(me);
 
     // Process rows with preloaded data
     let created = 0;
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
         }
 
         // MANAGER: only their group
-        if (me.role === "MANAGER" && groupId !== myGroupId) {
+        if (me.role === "MANAGER" && !myManagedIds.includes(groupId)) {
           errors.push(`ردیف ${i + 1}: دسترسی به مجموعه غیرمجاز.`);
           continue;
         }

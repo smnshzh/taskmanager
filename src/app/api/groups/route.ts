@@ -10,7 +10,7 @@ export async function GET() {
 
     const groups = await db.orgGroup.findMany({
       include: {
-        manager: true,
+        managers: { include: { member: true }, orderBy: { createdAt: "asc" } },
         _count: { select: { members: true, taskTemplates: true, tasks: true } },
       },
       orderBy: { createdAt: "asc" },
@@ -26,11 +26,12 @@ export async function GET() {
 }
 
 // POST /api/groups — SUPER_ADMIN only
+// Body: { name, code, managerIds?: string[] }
 export async function POST(req: NextRequest) {
   try {
     await requireRole("SUPER_ADMIN");
     const body = await req.json();
-    const { name, code } = body ?? {};
+    const { name, code, managerIds } = body ?? {};
 
     if (!name || !code) {
       return NextResponse.json({ error: "نام و کد مجموعه الزامی است." }, { status: 400 });
@@ -41,9 +42,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "این کد مجموعه قبلاً ثبت شده است." }, { status: 400 });
     }
 
+    // Validate manager IDs if provided
+    const validManagerIds: string[] = [];
+    if (Array.isArray(managerIds) && managerIds.length > 0) {
+      const mgrs = await db.member.findMany({
+        where: { id: { in: managerIds } },
+        select: { id: true, role: true },
+      });
+      for (const mid of managerIds) {
+        const mgr = mgrs.find((m) => m.id === mid);
+        if (!mgr) {
+          return NextResponse.json({ error: `عضو "${mid}" یافت نشد.` }, { status: 400 });
+        }
+        if (mgr.role !== "MANAGER") {
+          return NextResponse.json({ error: "فقط کاربران با نقش «مدیر مجموعه» می‌توانند مدیر باشند." }, { status: 400 });
+        }
+        validManagerIds.push(mid);
+      }
+    }
+
     const group = await db.orgGroup.create({
-      data: { name: String(name).trim(), code: String(code).trim() },
-      include: { manager: true, _count: { select: { members: true, taskTemplates: true, tasks: true } } },
+      data: {
+        name: String(name).trim(),
+        code: String(code).trim(),
+        managers: validManagerIds.length > 0 ? {
+          create: validManagerIds.map((mid) => ({ memberId: mid })),
+        } : undefined,
+      },
+      include: {
+        managers: { include: { member: true }, orderBy: { createdAt: "asc" } },
+        _count: { select: { members: true, taskTemplates: true, tasks: true } },
+      },
     });
 
     return NextResponse.json({ group: serializeGroup(group) }, { status: 201 });

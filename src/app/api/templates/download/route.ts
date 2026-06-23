@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentMember } from "@/lib/auth";
+import { getCurrentMember, getManagedGroupIds } from "@/lib/auth";
 import * as XLSX from "xlsx";
 
 // GET /api/templates/download?type=tasks|schedules
@@ -36,8 +36,9 @@ export async function GET(req: NextRequest) {
 
     // Filter members based on role
     let visibleMembers = members;
-    if (me.role === "MANAGER" && me.managedGroup?.id) {
-      visibleMembers = members.filter((m) => m.groupId === me.managedGroup?.id);
+    const myManagedGroupIds = me.role === "MANAGER" ? getManagedGroupIds(me) : [];
+    if (me.role === "MANAGER" && myManagedGroupIds.length > 0) {
+      visibleMembers = members.filter((m) => myManagedGroupIds.includes(m.groupId ?? ""));
     }
 
     const workbook = XLSX.utils.book_new();
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
     if (type === "schedules") {
       // ---- SCHEDULE TEMPLATE ----
       const groupNames = groups
-        .filter((g) => me.role === "MANAGER" ? g.id === me.managedGroup?.id : true)
+        .filter((g) => me.role === "MANAGER" ? myManagedGroupIds.includes(g.id) : true)
         .map((g) => g.name);
 
       const memberHandles = visibleMembers.map((m) => m.handle);
@@ -97,7 +98,7 @@ export async function GET(req: NextRequest) {
     } else {
       // ---- TASKS TEMPLATE ----
       const groupNames = groups
-        .filter((g) => me.role === "MANAGER" ? g.id === me.managedGroup?.id : true)
+        .filter((g) => me.role === "MANAGER" ? myManagedGroupIds.includes(g.id) : true)
         .map((g) => g.name);
 
       const memberHandles = visibleMembers.map((m) => m.handle);

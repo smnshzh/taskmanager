@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeTask, serializeLog } from "@/lib/serialize";
-import { requireAuth, isHttpError } from "@/lib/auth";
+import { requireAuth, isHttpError, isManagerOfGroup } from "@/lib/auth";
 
 // POST /api/tasks/[id]/approve
 // body: { action: "APPROVED" | "REJECTED" }
@@ -53,8 +53,8 @@ export async function POST(
       );
     }
 
-    // MANAGER can only approve tasks in their group
-    if (me.role === "MANAGER" && task.groupId !== me.managedGroup?.id) {
+    // MANAGER can only approve tasks in their managed groups
+    if (me.role === "MANAGER" && !isManagerOfGroup(me, task.groupId)) {
       return NextResponse.json(
         { error: "مدیر تنها می‌تواند تسک‌های مجموعه خود را تأیید کند." },
         { status: 403 }

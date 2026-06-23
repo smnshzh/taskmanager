@@ -11,22 +11,35 @@ datasource db {
 }
 
 // ---- Organization Groups (مجموعه‌ها) ----
-// Each group has one MANAGER, can have multiple SUPERVISORs, and under each supervisor, multiple SPECIALISTs
+// Each group can have MULTIPLE MANAGERs, multiple SUPERVISORs, and under each supervisor, multiple SPECIALISTs
 model OrgGroup {
   id        String   @id @default(cuid())
   name      String   // e.g. "تأمین فانتزی", "هوش تجاری"
   code      String   @unique // e.g. "GRP-001"
-  managerId String?  
-  manager   Member?  @relation("GroupManager", fields: [managerId], references: [id], onDelete: SetNull)
   members   Member[]
+  managers  GroupManager[]
   taskTemplates TaskTemplate[]
   tasks         Task[]
   createdAt DateTime @default(now())
 }
 
+// ---- Many-to-Many: Group ↔ Manager ----
+model GroupManager {
+  id       String   @id @default(cuid())
+  groupId  String
+  group    OrgGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  memberId String
+  member   Member   @relation("ManagedGroups", fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([groupId, memberId])
+  @@index([groupId])
+  @@index([memberId])
+}
+
 // ---- Team members with hierarchical roles ----
 // SUPER_ADMIN: sees everything, manages all groups
-// MANAGER: manages one group, sees group + subordinates
+// MANAGER: manages one or more groups, sees group + subordinates
 // SUPERVISOR: under a manager, supervises specialists
 // SPECIALIST: does the actual work
 model Member {
@@ -40,7 +53,7 @@ model Member {
   supervisorId    String?
   supervisor      Member?    @relation("Supervision", fields: [supervisorId], references: [id], onDelete: SetNull)
   subordinates    Member[]   @relation("Supervision")
-  managedGroup    OrgGroup?  @relation("GroupManager")
+  managedGroups   GroupManager[] @relation("ManagedGroups")
   avatar          String?
   createdAt       DateTime   @default(now())
   lastLoginAt     DateTime?

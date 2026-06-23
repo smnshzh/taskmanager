@@ -2,12 +2,17 @@ import type { Task, Member, FollowUpLog, OrgGroup, TaskTemplate, TaskSchedule } 
 import { roleByKey, priorityByKey, statusByKey, sourceByKey, approvalStatusByKey } from "./constants";
 import type { GroupWithManager, MemberWithCount, ScheduleWithRelations, TemplateWithRelations, TaskWithRelations } from "./prisma-types";
 
+export type SerializedGroupManager = {
+  memberId: string;
+  memberName: string;
+  memberHandle: string;
+};
+
 export type SerializedGroup = {
   id: string;
   name: string;
   code: string;
-  managerId: string | null;
-  managerName: string | null;
+  managers: SerializedGroupManager[];
   memberCount: number;
   createdAt: string;
 };
@@ -19,8 +24,11 @@ export function serializeGroup(
     id: g.id,
     name: g.name,
     code: g.code,
-    managerId: g.managerId,
-    managerName: g.manager?.name ?? null,
+    managers: (g.managers ?? []).map((gm) => ({
+      memberId: gm.memberId,
+      memberName: gm.member.name,
+      memberHandle: gm.member.handle,
+    })),
     memberCount: g._count?.members ?? 0,
     createdAt: g.createdAt.toISOString(),
   };

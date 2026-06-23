@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeSchedule } from "@/lib/serialize";
-import { getCurrentMember } from "@/lib/auth";
+import { getCurrentMember, isManagerOfGroup } from "@/lib/auth";
 
 // DELETE /api/schedules/[id]
 export async function DELETE(
@@ -33,7 +33,7 @@ export async function DELETE(
     }
 
     // MANAGER can only delete schedules of their group
-    if (me.role === "MANAGER" && schedule.taskTemplate.groupId !== me.managedGroup?.id) {
+    if (me.role === "MANAGER" && !isManagerOfGroup(me, schedule.taskTemplate.groupId)) {
       return NextResponse.json(
         { error: "مدیر تنها می‌تواند زمان‌بندی‌های مجموعه خود را حذف کند." },
         { status: 403 }
@@ -89,7 +89,7 @@ export async function PATCH(
     }
 
     // MANAGER can only edit schedules of their group
-    if (me.role === "MANAGER" && existing.taskTemplate.groupId !== me.managedGroup?.id) {
+    if (me.role === "MANAGER" && !isManagerOfGroup(me, existing.taskTemplate.groupId)) {
       return NextResponse.json(
         { error: "مدیر تنها می‌تواند زمان‌بندی‌های مجموعه خود را ویرایش کند." },
         { status: 403 }

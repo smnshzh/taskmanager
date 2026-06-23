@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeTaskTemplate } from "@/lib/serialize";
 import { PRIORITIES } from "@/lib/constants";
-import { getCurrentMember } from "@/lib/auth";
+import { getCurrentMember, isManagerOfGroup, getManagedGroupIds } from "@/lib/auth";
 
 // GET /api/templates — filtered by group if not SUPER_ADMIN
 export async function GET() {
@@ -14,7 +14,13 @@ export async function GET() {
 
     const where: Record<string, unknown> = {};
     if (me.role !== "SUPER_ADMIN") {
-      where.groupId = me.role === "MANAGER" ? me.managedGroup?.id : me.groupId;
+      if (me.role === "MANAGER") {
+        const ids = getManagedGroupIds(me);
+        if (ids.length > 0) where.groupId = { in: ids };
+        else where.groupId = "__none__"; // return empty
+      } else {
+        where.groupId = me.groupId;
+      }
     }
 
     const templates = await db.taskTemplate.findMany({
@@ -67,8 +73,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "اولویت نامعتبر است." }, { status: 400 });
     }
 
-    // MANAGER can only create for their group
-    if (me.role === "MANAGER" && groupId !== me.managedGroup?.id) {
+    // MANAGER can only create for their managed groups
+    if (me.role === "MANAGER" && !isManagerOfGroup(me, groupId)) {
       return NextResponse.json(
         { error: "مدیر تنها می‌تواند برای مجموعه خود الگو ایجاد کند." },
         { status: 403 }

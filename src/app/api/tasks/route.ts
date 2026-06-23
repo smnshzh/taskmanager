@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeTask } from "@/lib/serialize";
-import { getCurrentMember, getVisibleMemberIds, canManage } from "@/lib/auth";
+import { getCurrentMember, getVisibleMemberIds, canManage, isManagerOfGroup } from "@/lib/auth";
 import { STATUSES, PRIORITIES } from "@/lib/constants";
 
 // GET /api/tasks?status=&groupId=&priority=&source=&overdue=1
@@ -147,10 +147,10 @@ export async function POST(req: NextRequest) {
         );
       }
     } else if (me.role === "MANAGER") {
-      // Manager can create for any group member
-      if (assignee.groupId !== me.managedGroup?.id) {
+      // Manager can create for any member in any of their managed groups
+      if (!isManagerOfGroup(me, groupId)) {
         return NextResponse.json(
-          { error: "مسئول باید عضو مجموعه شما باشد." },
+          { error: "مسئول باید عضو مجموعه‌ای باشد که شما مدیریت آن را بر عهده دارید." },
           { status: 403 }
         );
       }

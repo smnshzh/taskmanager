@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeTask, serializeLog } from "@/lib/serialize";
 import { STATUSES, PRIORITIES, FOLLOW_UP_REASONS } from "@/lib/constants";
-import { requireAuth, getVisibleMemberIds, isHttpError } from "@/lib/auth";
+import { requireAuth, getVisibleMemberIds, isHttpError, isManagerOfGroup } from "@/lib/auth";
 
 // GET /api/tasks/[id]
 export async function GET(
@@ -235,7 +235,7 @@ export async function DELETE(
 
     // MANAGER can only delete tasks from their group
     if (me.role === "MANAGER") {
-      if (task.groupId !== me.managedGroup?.id) {
+      if (!isManagerOfGroup(me, task.groupId)) {
         return NextResponse.json(
           { error: "شما تنها می‌توانید تسک‌های مجموعه خود را حذف کنید." },
           { status: 403 }

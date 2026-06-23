@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeMember } from "@/lib/serialize";
 import { ROLES } from "@/lib/constants";
-import { getCurrentMember, getVisibleMemberIds, canManage } from "@/lib/auth";
+import { getCurrentMember, getVisibleMemberIds, canManage, getManagedGroupIds, isManagerOfGroup } from "@/lib/auth";
 
 // GET /api/members — role-scoped listing
 export async function GET() {
@@ -23,8 +23,9 @@ export async function GET() {
         orderBy: { createdAt: "asc" },
       });
     } else if (me.role === "MANAGER") {
+      const ids = getManagedGroupIds(me);
       members = await db.member.findMany({
-        where: { groupId: me.managedGroup?.id },
+        where: ids.length > 0 ? { groupId: { in: ids } } : { id: "__none__" },
         include: {
           group: true,
           supervisor: true,
@@ -153,7 +154,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      if (me.role === "MANAGER" && targetGroupId !== me.managedGroup?.id) {
+      if (me.role === "MANAGER" && !isManagerOfGroup(me, targetGroupId)) {
         return NextResponse.json(
           { error: "مدیر تنها می‌تواند برای مجموعه خود عضو ایجاد کند." },
           { status: 403 }

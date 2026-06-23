@@ -19,7 +19,7 @@ export async function GET(
     const group = await db.orgGroup.findUnique({
       where: { id },
       include: {
-        manager: true,
+        managers: { include: { member: true }, orderBy: { createdAt: "asc" } },
         members: {
           include: { group: true, supervisor: true, _count: { select: { tasks: true } } },
           orderBy: { createdAt: "asc" },
@@ -56,6 +56,7 @@ export async function GET(
 }
 
 // PATCH /api/groups/[id] — SUPER_ADMIN only
+// Body: { name?, managerIds?: string[] | null }
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -64,7 +65,7 @@ export async function PATCH(
     await requireRole("SUPER_ADMIN");
     const { id } = await params;
     const body = await req.json();
-    const { name, managerId } = body ?? {};
+    const { name, managerIds } = body ?? {};
 
     const existing = await db.orgGroup.findUnique({ where: { id } });
     if (!existing) {
@@ -74,21 +75,46 @@ export async function PATCH(
     const data: Record<string, unknown> = {};
     if (name !== undefined) data.name = String(name).trim();
 
-    if (managerId !== undefined) {
-      if (managerId === null) {
-        data.managerId = null;
-      } else {
-        const newManager = await db.member.findUnique({ where: { id: managerId } });
-        if (!newManager) return NextResponse.json({ error: "عضو یافت نشد." }, { status: 400 });
-        if (newManager.role !== "MANAGER") return NextResponse.json({ error: "فقط مدیر مجموعه می‌تواند مدیر باشد." }, { status: 400 });
-        data.managerId = managerId;
+    // Handle manager updates
+    if (managerIds !== undefined) {
+      if (managerIds === null || (Array.isArray(managerIds) && managerIds.length === 0)) {
+        // Remove all managers
+        await db.groupManager.deleteMany({ where: { groupId: id } });
+      } else if (Array.isArray(managerIds)) {
+        // Validate all manager IDs
+        const mgrs = await db.member.findMany({
+          where: { id: { in: managerIds } },
+          select: { id: true, role: true },
+        });
+        for (const mid of managerIds) {
+          const mgr = mgrs.find((m) => m.id === mid);
+          if (!mgr) {
+            return NextResponse.json({ error: `عضو "${mid}" یافت نشد.` }, { status: 400 });
+          }
+          if (mgr.role !== "MANAGER") {
+            return NextResponse.json({ error: "فقط کاربران با نقش «مدیر مجموعه» می‌توانند مدیر باشند." }, { status: 400 });
+          }
+        }
+
+        // Replace all managers in a transaction
+        await db.$transaction(async (tx) => {
+          await tx.groupManager.deleteMany({ where: { groupId: id } });
+          if (managerIds.length > 0) {
+            await tx.groupManager.createMany({
+              data: managerIds.map((mid: string) => ({ groupId: id, memberId: mid })),
+            });
+          }
+        });
       }
     }
 
     const updated = await db.orgGroup.update({
       where: { id },
       data,
-      include: { manager: true, _count: { select: { members: true, taskTemplates: true, tasks: true } } },
+      include: {
+        managers: { include: { member: true }, orderBy: { createdAt: "asc" } },
+        _count: { select: { members: true, taskTemplates: true, tasks: true } },
+      },
     });
 
     return NextResponse.json({ group: serializeGroup(updated) });

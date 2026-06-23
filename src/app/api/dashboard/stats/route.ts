@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { toJalali, toPersianDigits } from "@/lib/jalali";
-import { getCurrentMember, getVisibleMemberIds } from "@/lib/auth";
+import { getCurrentMember, getVisibleMemberIds, getManagedGroupIds } from "@/lib/auth";
 
 // GET /api/dashboard/stats
 // Aggregated statistics for the BI dashboard:
@@ -66,8 +66,10 @@ export async function GET() {
 
   // Get all groups for the current user's scope
   const groupsWhere: Record<string, unknown> = {};
-  if (me.role === "MANAGER" && me.managedGroup?.id) {
-    groupsWhere.id = me.managedGroup.id;
+  if (me.role === "MANAGER") {
+    const ids = getManagedGroupIds(me);
+    if (ids.length > 0) groupsWhere.id = { in: ids };
+    else groupsWhere.id = "__none__";
   }
   const groups = await db.orgGroup.findMany({
     where: groupsWhere,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentMember } from "@/lib/auth";
+import { getCurrentMember, isManagerOfGroup, getManagedGroupIds } from "@/lib/auth";
 import * as XLSX from "xlsx";
 
 // Priority label to key mapping (Persian)
@@ -239,7 +239,7 @@ export async function POST(req: NextRequest) {
     });
     const memberByHandle = new Map(allMembers.map((m) => [m.handle, m]));
 
-    const myGroupId = me.managedGroup?.id;
+    const myManagedGroupIds = me.role === "MANAGER" ? getManagedGroupIds(me) : [];
     let created = 0;
     const errors: string[] = [];
 
@@ -259,8 +259,8 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        // MANAGER: only their group
-        if (me.role === "MANAGER" && group.id !== myGroupId) {
+        // MANAGER: only their managed groups
+        if (me.role === "MANAGER" && !myManagedGroupIds.includes(group.id)) {
           errors.push(`ردیف ${rowNum}: دسترسی به مجموعه "${groupName}" غیرمجاز.`);
           continue;
         }
@@ -279,7 +279,7 @@ export async function POST(req: NextRequest) {
 
         // Role-based checks
         if (me.role === "MANAGER") {
-          if (assignee.groupId !== myGroupId) {
+          if (!myManagedGroupIds.includes(assignee.groupId)) {
             errors.push(`ردیف ${rowNum}: مسئول باید عضو مجموعه شما باشد.`);
             continue;
           }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentMember } from "@/lib/auth";
+import { getCurrentMember, getManagedGroupIds } from "@/lib/auth";
 import * as XLSX from "xlsx";
 
 // Persian day name to number mapping
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
     });
     const memberByHandle = new Map(allMembers.map((m) => [m.handle, m]));
 
-    const myGroupId = me.managedGroup?.id;
+    const myManagedGroupIds = me.role === "MANAGER" ? getManagedGroupIds(me) : [];
     let created = 0;
     const errors: string[] = [];
     const templateCache = new Map<string, string>(); // "name|groupId" -> templateId
@@ -146,8 +146,8 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        // MANAGER: only their group
-        if (me.role === "MANAGER" && group.id !== myGroupId) {
+        // MANAGER: only their managed groups
+        if (me.role === "MANAGER" && !myManagedGroupIds.includes(group.id)) {
           errors.push(`\u0631\u062F\u06CC\u0641 ${rowNum}: \u062F\u0633\u062A\u0631\u0633\u06CC \u0628\u0647 \u0645\u062C\u0645\u0648\u0639\u0647 "${groupName}" \u063A\u06CC\u0631\u0645\u062C\u0627\u0632.`);
           continue;
         }

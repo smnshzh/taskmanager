@@ -1,14 +1,19 @@
 // Re-usable Prisma payload types with common includes
 import { Prisma } from "@prisma/client";
 
-// Member with group, supervisor, and managedGroup included
+// Member with group, supervisor, and managed groups included
 export type MemberWithRelations = Prisma.MemberGetPayload<{
   include: {
     group: true;
     supervisor: true;
-    managedGroup: true;
+    managedGroups: { include: { group: true } };
   };
 }>;
+
+// Helper: get group IDs that a member manages (empty array if not a manager)
+export function getManagedGroupIds(member: MemberWithRelations): string[] {
+  return member.managedGroups.map((gm) => gm.groupId);
+}
 
 // Member with group, supervisor, and task count
 export type MemberWithCount = Prisma.MemberGetPayload<{
@@ -40,10 +45,10 @@ export type TaskWithLogs = Prisma.TaskGetPayload<{
   };
 }>;
 
-// OrgGroup with manager and counts
+// OrgGroup with managers and counts
 export type GroupWithManager = Prisma.OrgGroupGetPayload<{
   include: {
-    manager: true;
+    managers: { include: { member: true } };
     _count: { select: { members: true; taskTemplates: true; tasks: true } };
   };
 }>;

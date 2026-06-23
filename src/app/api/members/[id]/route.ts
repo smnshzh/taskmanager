@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeMember } from "@/lib/serialize";
 import { ROLES } from "@/lib/constants";
-import { getCurrentMember, requireRole, getVisibleMemberIds, canManage } from "@/lib/auth";
+import { getCurrentMember, requireRole, getVisibleMemberIds, canManage, isManagerOfGroup } from "@/lib/auth";
 
 // GET /api/members/[id]
 export async function GET(
@@ -212,9 +212,9 @@ export async function DELETE(
       );
     }
 
-    // MANAGER can only delete members of their own group
+    // MANAGER can only delete members of their own managed groups
     if (me.role === "MANAGER") {
-      if (member.groupId !== me.managedGroup?.id) {
+      if (!member.groupId || !isManagerOfGroup(me, member.groupId)) {
         return NextResponse.json(
           { error: "مدیر تنها می‌تواند اعضای مجموعه خود را حذف کند." },
           { status: 403 }

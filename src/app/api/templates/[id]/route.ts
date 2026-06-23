@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeTaskTemplate } from "@/lib/serialize";
 import { PRIORITIES } from "@/lib/constants";
-import { getCurrentMember } from "@/lib/auth";
+import { getCurrentMember, isManagerOfGroup } from "@/lib/auth";
 
 // GET /api/templates/[id]
 export async function GET(
@@ -30,7 +30,7 @@ export async function GET(
     }
 
     // Non-admin can only see their group's templates
-    if (me.role !== "SUPER_ADMIN" && template.groupId !== me.groupId && template.groupId !== me.managedGroup?.id) {
+    if (me.role !== "SUPER_ADMIN" && template.groupId !== me.groupId && !isManagerOfGroup(me, template.groupId)) {
       return NextResponse.json(
         { error: "شما به این الگو دسترسی ندارید." },
         { status: 403 }
@@ -72,7 +72,7 @@ export async function PATCH(
       );
     }
 
-    if (me.role === "MANAGER" && existing.groupId !== me.managedGroup?.id) {
+    if (me.role === "MANAGER" && !isManagerOfGroup(me, existing.groupId)) {
       return NextResponse.json(
         { error: "مدیر تنها می‌تواند الگوهای مجموعه خود را ویرایش کند." },
         { status: 403 }
@@ -127,7 +127,7 @@ export async function DELETE(
       );
     }
 
-    if (me.role === "MANAGER" && existing.groupId !== me.managedGroup?.id) {
+    if (me.role === "MANAGER" && !isManagerOfGroup(me, existing.groupId)) {
       return NextResponse.json(
         { error: "مدیر تنها می‌تواند الگوهای مجموعه خود را حذف کند." },
         { status: 403 }

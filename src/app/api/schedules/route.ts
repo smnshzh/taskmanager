@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeSchedule } from "@/lib/serialize";
-import { getCurrentMember } from "@/lib/auth";
+import { getCurrentMember, isManagerOfGroup, getManagedGroupIds } from "@/lib/auth";
 
 // GET /api/schedules — filtered by group
 export async function GET() {
@@ -13,8 +13,8 @@ export async function GET() {
 
     const where: Record<string, unknown> = {};
     if (me.role !== "SUPER_ADMIN") {
-      const targetGroupId = me.role === "MANAGER" ? me.managedGroup?.id : me.groupId;
-      where.taskTemplate = { groupId: targetGroupId };
+      const targetGroupIds = me.role === "MANAGER" ? getManagedGroupIds(me) : (me.groupId ? [me.groupId] : []);
+      where.taskTemplate = { groupId: { in: targetGroupIds } };
     }
 
     const schedules = await db.taskSchedule.findMany({
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "الگو یافت نشد." }, { status: 400 });
     }
 
-    if (me.role === "MANAGER" && template.groupId !== me.managedGroup?.id) {
+    if (me.role === "MANAGER" && !isManagerOfGroup(me, template.groupId)) {
       return NextResponse.json(
         { error: "مدیر تنها می‌تواند برای الگوهای مجموعه خود زمان‌بندی ایجاد کند." },
         { status: 403 }

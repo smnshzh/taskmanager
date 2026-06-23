@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -26,16 +27,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useTMStore } from "@/lib/pmo-store";
 import { toPersianDigits } from "@/lib/jalali";
-import { cn } from "@/lib/utils";
 import type { SerializedGroup, SerializedMember } from "@/lib/serialize";
 import { toast } from "sonner";
 import {
@@ -45,10 +38,8 @@ import {
   Trash2,
   Users,
   Loader2,
-  Save,
-  UserCheck,
-  ListChecks,
   Crown,
+  X,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -56,7 +47,6 @@ import {
 /* ------------------------------------------------------------------ */
 
 export function GroupsView() {
-  const member = useTMStore((s) => s.member);
   const queryClient = useQueryClient();
 
   const { data: groupsData, isLoading } = useQuery({
@@ -91,7 +81,7 @@ export function GroupsView() {
   const [deleteTarget, setDeleteTarget] = React.useState<SerializedGroup | null>(null);
   const [deleteBusy, setDeleteBusy] = React.useState(false);
 
-  async function handleCreate(data: { name: string; code: string; managerId: string | null }) {
+  async function handleCreate(data: { name: string; code: string; managerIds: string[] }) {
     try {
       const res = await fetch("/api/groups", {
         method: "POST",
@@ -112,7 +102,7 @@ export function GroupsView() {
     }
   }
 
-  async function handleEdit(data: { name: string; managerId: string | null }) {
+  async function handleEdit(data: { name: string; managerIds: string[] }) {
     if (!editGroup) return;
     try {
       const res = await fetch(`/api/groups/${editGroup.id}`, {
@@ -138,8 +128,6 @@ export function GroupsView() {
     if (!deleteTarget) return;
     setDeleteBusy(true);
     try {
-      // We don't actually call DELETE since API doesn't have it
-      // Just close and show message
       toast.info("مجموعه‌ها نمی‌توانند حذف شوند. ابتدا اعضا را جابجا کنید.");
       setDeleteTarget(null);
     } finally {
@@ -220,17 +208,20 @@ export function GroupsView() {
                   </div>
                 </div>
 
-                {/* Manager */}
-                {g.managerName && (
-                  <div className="flex items-center gap-1.5 text-sm">
-                    <Crown className="h-3.5 w-3.5 text-amber-500" />
-                    <span className="font-medium">{g.managerName}</span>
-                    <Badge variant="outline" className="text-[10px] h-5">
-                      مدیر
-                    </Badge>
+                {/* Managers */}
+                {g.managers && g.managers.length > 0 ? (
+                  <div className="space-y-1">
+                    {g.managers.map((gm) => (
+                      <div key={gm.memberId} className="flex items-center gap-1.5 text-sm">
+                        <Crown className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                        <span className="font-medium truncate">{gm.memberName}</span>
+                        <Badge variant="outline" className="text-[10px] h-5 shrink-0">
+                          مدیر
+                        </Badge>
+                      </div>
+                    ))}
                   </div>
-                )}
-                {!g.managerName && (
+                ) : (
                   <p className="text-xs text-muted-foreground">بدون مدیر</p>
                 )}
 
@@ -293,7 +284,7 @@ export function GroupsView() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Group Form Dialog                                                   */
+/*  Group Form Dialog (Multi-Manager)                                   */
 /* ------------------------------------------------------------------ */
 
 interface GroupFormDialogProps {
@@ -301,14 +292,26 @@ interface GroupFormDialogProps {
   onOpenChange: (v: boolean) => void;
   editing?: SerializedGroup | null;
   managers: SerializedMember[];
-  onSave: (data: { name: string; code: string; managerId: string | null }) => void;
+  onSave: (data: { name: string; code: string; managerIds: string[] }) => void;
 }
 
 function GroupFormDialog({ open, onOpenChange, editing, managers, onSave }: GroupFormDialogProps) {
   const [name, setName] = React.useState(() => editing?.name ?? "");
   const [code, setCode] = React.useState(() => editing?.code ?? "");
-  const [managerId, setManagerId] = React.useState(() => editing?.managerId ?? "");
+  const [selectedManagerIds, setSelectedManagerIds] = React.useState<string[]>(
+    () => editing?.managers?.map((gm) => gm.memberId) ?? []
+  );
   const [busy, setBusy] = React.useState(false);
+
+  function toggleManager(id: string) {
+    setSelectedManagerIds((prev) =>
+      prev.includes(id) ? prev.filter((mid) => mid !== id) : [...prev, id]
+    );
+  }
+
+  function removeManager(id: string) {
+    setSelectedManagerIds((prev) => prev.filter((mid) => mid !== id));
+  }
 
   async function submit() {
     if (!name.trim() || (!editing && !code.trim())) {
@@ -320,16 +323,20 @@ function GroupFormDialog({ open, onOpenChange, editing, managers, onSave }: Grou
       await onSave({
         name: name.trim(),
         code: code.trim(),
-        managerId: managerId || null,
+        managerIds: selectedManagerIds,
       });
     } finally {
       setBusy(false);
     }
   }
 
+  // Selected manager details for the "selected" display
+  const selectedManagers = managers.filter((m) => selectedManagerIds.includes(m.id));
+  const unselectedManagers = managers.filter((m) => !selectedManagerIds.includes(m.id));
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {editing ? (
@@ -349,7 +356,7 @@ function GroupFormDialog({ open, onOpenChange, editing, managers, onSave }: Grou
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="g-name">نام مجموعه *</Label>
             <Input
@@ -374,29 +381,57 @@ function GroupFormDialog({ open, onOpenChange, editing, managers, onSave }: Grou
             </div>
           )}
 
+          {/* Multi-select managers */}
           <div className="space-y-1.5">
             <Label className="flex items-center gap-1.5">
               <Crown className="h-3.5 w-3.5 text-amber-500" />
-              مدیر مجموعه
+              مدیران مجموعه
             </Label>
-            <Select value={managerId} onValueChange={setManagerId}>
-              <SelectTrigger>
-                <SelectValue placeholder="بدون مدیر" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">بدون مدیر</SelectItem>
-                {managers.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.name} ({m.handle})
-                  </SelectItem>
+
+            {/* Already selected managers (removable chips) */}
+            {selectedManagers.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {selectedManagers.map((m) => (
+                  <Badge
+                    key={m.id}
+                    variant="secondary"
+                    className="gap-1 pl-1.5 pr-2 py-1 text-xs cursor-pointer hover:bg-destructive/10"
+                    onClick={() => removeManager(m.id)}
+                  >
+                    <Crown className="h-3 w-3 text-amber-500" />
+                    {m.name}
+                    <X className="h-3 w-3 ml-0.5 opacity-50" />
+                  </Badge>
                 ))}
-              </SelectContent>
-            </Select>
-            {managers.length === 0 && (
+              </div>
+            )}
+
+            {/* Checkbox list for adding managers */}
+            {managers.length === 0 ? (
               <p className="text-[11px] text-muted-foreground">
                 هیچ کاربری با نقش «مدیر مجموعه» وجود ندارد.
               </p>
-            )}
+            ) : unselectedManagers.length > 0 ? (
+              <div className="border rounded-md max-h-36 overflow-y-auto">
+                {unselectedManagers.map((m) => (
+                  <label
+                    key={m.id}
+                    className="flex items-center gap-2.5 px-3 py-2 hover:bg-muted/50 cursor-pointer text-sm transition-colors"
+                  >
+                    <Checkbox
+                      checked={false}
+                      onCheckedChange={() => toggleManager(m.id)}
+                    />
+                    <div className="min-w-0">
+                      <span className="font-medium">{m.name}</span>
+                      <span className="text-muted-foreground mr-1.5 text-xs" dir="ltr">
+                        ({m.handle})
+                      </span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 

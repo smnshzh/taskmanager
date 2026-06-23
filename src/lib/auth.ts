@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import type { MemberWithRelations } from "@/lib/prisma-types";
+import { getManagedGroupIds } from "@/lib/prisma-types";
 
 export const SESSION_COOKIE = "tm_session";
 
@@ -21,7 +22,7 @@ export async function getCurrentMember(): Promise<MemberWithRelations | null> {
 
   const member = await db.member.findUnique({
     where: { id: memberId },
-    include: { group: true, supervisor: true, managedGroup: true },
+    include: { group: true, supervisor: true, managedGroups: { include: { group: true } } },
   });
 
   if (member) {
@@ -69,21 +70,23 @@ export async function getVisibleMemberIds(member: MemberWithRelations): Promise<
     return all.map((m) => m.id);
   }
 
-  // MANAGER: see all members in their managed group
-  if (member.role === "MANAGER" && member.managedGroup?.id) {
-    const groupMembers = await db.member.findMany({
-      where: { groupId: member.managedGroup.id },
-      select: { id: true },
-    });
-    return groupMembers.map((m) => m.id);
+  // MANAGER: see all members in all their managed groups
+  if (member.role === "MANAGER") {
+    const managedGroupIds = getManagedGroupIds(member);
+    if (managedGroupIds.length > 0) {
+      const groupMembers = await db.member.findMany({
+        where: { groupId: { in: managedGroupIds } },
+        select: { id: true },
+      });
+      return groupMembers.map((m) => m.id);
+    }
+    // Manager with no groups: only self
+    return [member.id];
   }
 
   // SUPERVISOR: see self + all recursive subordinates
-  // Single query to get all members under this supervisor chain
   const ids: string[] = [member.id];
 
-  // Get all members whose supervisor chain includes this member
-  // We do this iteratively to handle arbitrary depth
   let currentLevelIds = [member.id];
   while (currentLevelIds.length > 0) {
     const nextLevel = await db.member.findMany({
@@ -109,6 +112,16 @@ export function canManage(manager: MemberWithRelations, targetRoleId: string): b
   };
   return hierarchy[manager.role]?.includes(targetRoleId) ?? false;
 }
+
+// Check if a member is a manager of a specific group
+export function isManagerOfGroup(member: MemberWithRelations, groupId: string): boolean {
+  if (member.role === "SUPER_ADMIN") return true;
+  if (member.role !== "MANAGER") return false;
+  return getManagedGroupIds(member).includes(groupId);
+}
+
+// Get group IDs managed by this member (convenience re-export)
+export { getManagedGroupIds };
 
 // Type-safe error status check
 export function isHttpError(error: unknown, status: number): boolean {
