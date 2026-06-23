@@ -1,0 +1,975 @@
+     1→     1→"use client";
+     2→     2→
+     3→     3→import * as React from "react";
+     4→     4→import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+     5→     5→import { Card } from "@/components/ui/card";
+     6→     6→import { Badge } from "@/components/ui/badge";
+     7→     7→import { Button } from "@/components/ui/button";
+     8→     8→import { Skeleton } from "@/components/ui/skeleton";
+     9→     9→import { Input } from "@/components/ui/input";
+    10→    10→import { Separator } from "@/components/ui/separator";
+    11→    11→import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+    12→    12→import {
+    13→    13→  Select,
+    14→    14→  SelectContent,
+    15→    15→  SelectItem,
+    16→    16→  SelectTrigger,
+    17→    17→  SelectValue,
+    18→    18→} from "@/components/ui/select";
+    19→    19→import {
+    20→    20→  Table,
+    21→    21→  TableBody,
+    22→    22→  TableCell,
+    23→    23→  TableHead,
+    24→    24→  TableHeader,
+    25→    25→  TableRow,
+    26→    26→} from "@/components/ui/table";
+    27→    27→import {
+    28→    28→  Sheet,
+    29→    29→  SheetContent,
+    30→    30→  SheetHeader,
+    31→    31→  SheetTitle,
+    32→    32→  SheetDescription,
+    33→    33→} from "@/components/ui/sheet";
+    34→    34→import {
+    35→    35→  Dialog,
+    36→    36→  DialogContent,
+    37→    37→  DialogHeader,
+    38→    38→  DialogTitle,
+    39→    39→  DialogDescription,
+    40→    40→} from "@/components/ui/dialog";
+    41→    41→import {
+    42→    42→  STATUSES,
+    43→    43→  PRIORITIES,
+    44→    44→  TASK_SOURCES,
+    45→    45→  FOLLOW_UP_REASONS,
+    46→    46→  APPROVAL_STATUSES,
+    47→    47→  approvalStatusByKey,
+    48→    48→  statusByKey,
+    49→    49→  priorityByKey,
+    50→    50→  sourceByKey,
+    51→    51→} from "@/lib/constants";
+    52→    52→import type { SerializedTask, SerializedLog } from "@/lib/serialize";
+    53→    53→import {
+    54→    54→  toPersianDigits,
+    55→    55→  isOverdue,
+    56→    56→  formatJalaliDate,
+    57→    57→  formatJalaliLong,
+    58→    58→  formatTime,
+    59→    59→  daysBetween,
+    60→    60→} from "@/lib/jalali";
+    61→    61→import { cn } from "@/lib/utils";
+    62→    62→import { toast } from "sonner";
+    63→    63→import {
+    64→    64→  CheckCircle2,
+    65→    65→  Clock,
+    66→    66→  AlertTriangle,
+    67→    67→  Circle,
+    68→    68→  PlayCircle,
+    69→    69→  FileText,
+    70→    70→  Eye,
+    71→    71→  Upload,
+    72→    72→  Download,
+    73→    73→  Search,
+    74→    74→  Filter,
+    75→    75→  CalendarClock,
+    76→    76→  User,
+    77→    77→  Link2,
+    78→    78→  History,
+    79→    79→  MessageSquare,
+    80→    80→  FileArchive,
+    81→    81→} from "lucide-react";
+    82→    82→
+    83→    83→/* ------------------------------------------------------------------ */
+    84→    84→/*  Badge helpers                                                      */
+    85→    85→/* ------------------------------------------------------------------ */
+    86→    86→
+    87→    87→const PRIORITY_STYLES: Record<string, string> = {
+    88→    88→  HIGH: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800",
+    89→    89→  MEDIUM: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+    90→    90→  LOW: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700",
+    91→    91→};
+    92→    92→
+    93→    93→const STATUS_STYLES: Record<string, string> = {
+    94→    94→  PENDING: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700",
+    95→    95→  STARTED: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800",
+    96→    96→  BLOCKED: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800",
+    97→    97→  DONE: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
+    98→    98→};
+    99→    99→
+   100→   100→const SOURCE_STYLES: Record<string, string> = {
+   101→   101→  MANUAL: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700",
+   102→   102→  SCHEDULED: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800",
+   103→   103→  REFERRED: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+   104→   104→};
+   105→   105→
+   106→   106→function PriorityBadge({ priority }: { priority: string }) {
+   107→   107→  const p = priorityByKey(priority);
+   108→   108→  if (!p) return null;
+   109→   109→  return (
+   110→   110→    <span
+   111→   111→      className={cn(
+   112→   112→        "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
+   113→   113→        PRIORITY_STYLES[p.key]
+   114→   114→      )}
+   115→   115→    >
+   116→   116→      {p.label}
+   117→   117→    </span>
+   118→   118→  );
+   119→   119→}
+   120→   120→
+   121→   121→function StatusBadge({ status }: { status: string }) {
+   122→   122→  const s = statusByKey(status);
+   123→   123→  if (!s) return null;
+   124→   124→  const Icon =
+   125→   125→    s.key === "DONE"
+   126→   126→      ? CheckCircle2
+   127→   127→      : s.key === "STARTED"
+   128→   128→        ? Clock
+   129→   129→        : s.key === "BLOCKED"
+   130→   130→          ? AlertTriangle
+   131→   131→          : Circle;
+   132→   132→  return (
+   133→   133→    <span
+   134→   134→      className={cn(
+   135→   135→        "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
+   136→   136→        STATUS_STYLES[s.key]
+   137→   137→      )}
+   138→   138→    >
+   139→   139→      <Icon className="h-3 w-3" />
+   140→   140→      {s.label}
+   141→   141→    </span>
+   142→   142→  );
+   143→   143→}
+   144→   144→
+   145→   145→function SourceBadge({ source }: { source: string }) {
+   146→   146→  if (source === "REFERRED") {
+   147→   147→    return (
+   148→   148→      <span
+   149→   149→        className={cn(
+   150→   150→          "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
+   151→   151→          SOURCE_STYLES.REFERRED
+   152→   152→        )}
+   153→   153→      >
+   154→   154→        <FileText className="h-3 w-3" />
+   155→   155→        نامه‌ای
+   156→   156→      </span>
+   157→   157→    );
+   158→   158→  }
+   159→   159→  const s = sourceByKey(source);
+   160→   160→  if (!s) return null;
+   161→   161→  return (
+   162→   162→    <span
+   163→   163→      className={cn(
+   164→   164→        "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
+   165→   165→        SOURCE_STYLES[source] ?? SOURCE_STYLES.MANUAL
+   166→   166→      )}
+   167→   167→    >
+   168→   168→      {s.label}
+   169→   169→    </span>
+   170→   170→  );
+   171→   171→}
+   172→   172→
+   173→   173→/* ------------------------------------------------------------------ */
+   174→   174→/*  TaskListView                                                       */
+   175→   175→/* ------------------------------------------------------------------ */
+   176→   176→
+   177→   177→export function TaskListView() {
+   178→   178→  const queryClient = useQueryClient();
+   179→   179→
+   180→   180→  // Filters
+   181→   181→  const [search, setSearch] = React.useState("");
+   182→   182→  const [statusFilter, setStatusFilter] = React.useState<string>("all");
+   183→   183→  const [priorityFilter, setPriorityFilter] = React.useState<string>("all");
+   184→   184→  const [sourceFilter, setSourceFilter] = React.useState<string>("all");
+   185→   185→  const [groupFilter, setGroupFilter] = React.useState<string>("all");
+   186→   186→
+   187→   187→  // Detail sheet
+   188→   188→  const [detailTask, setDetailTask] = React.useState<SerializedTask | null>(null);
+   189→   189→  const [detailOpen, setDetailOpen] = React.useState(false);
+   190→   190→
+   191→   191→  // Excel import
+   192→   192→  const taskFileRef = React.useRef<HTMLInputElement>(null);
+   193→   193→  const [importing, setImporting] = React.useState(false);
+   194→   194→
+   195→   195→  const handleTaskImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+   196→   196→    const file = e.target.files?.[0];
+   197→   197→    if (!file) return;
+   198→   198→    setImporting(true);
+   199→   199→    const fd = new FormData();
+   200→   200→    fd.append("file", file);
+   201→   201→    try {
+   202→   202→      const r = await fetch("/api/tasks/import", { method: "POST", body: fd });
+   203→   203→      const data = await r.json();
+   204→   204→      if (r.ok || r.status === 201) {
+   205→   205→        queryClient.invalidateQueries({ queryKey: ["tasks"] });
+   206→   206→        const msg = data.created
+   207→   207→          ? `${data.created} تسک با موفقیت وارد شد.`
+   208→   208→          : "تسکی وارد نشد.";
+   209→   209→        toast.success(msg);
+   210→   210→        if (data.errors?.length > 0) {
+   211→   211→          toast.error(`${toPersianDigits(data.errors.length)} خطا: ${data.errors.slice(0, 3).join(" | ")}`);
+   212→   212→        }
+   213→   213→      } else {
+   214→   214→        toast.error(data.error ?? "خطا در وارد کردن فایل اکسل.");
+   215→   215→      }
+   216→   216→    } catch {
+   217→   217→      toast.error("خطا در ارسال فایل.");
+   218→   218→    } finally {
+   219→   219→      setImporting(false);
+   220→   220→      if (taskFileRef.current) taskFileRef.current.value = "";
+   221→   221→    }
+   222→   222→  };
+   223→   223→
+   224→   224→  // Build query params
+   225→   225→  const queryParams = React.useMemo(() => {
+   226→   226→    const params = new URLSearchParams();
+   227→   227→    if (statusFilter !== "all") params.set("status", statusFilter);
+   228→   228→    if (priorityFilter !== "all") params.set("priority", priorityFilter);
+   229→   229→    if (sourceFilter !== "all") params.set("source", sourceFilter);
+   230→   230→    if (groupFilter !== "all") params.set("groupId", groupFilter);
+   231→   231→    const qs = params.toString();
+   232→   232→    return qs ? `?${qs}` : "";
+   233→   233→  }, [statusFilter, priorityFilter, sourceFilter, groupFilter]);
+   234→   234→
+   235→   235→  // Fetch tasks
+   236→   236→  const { data: tasksData, isLoading } = useQuery({
+   237→   237→    queryKey: [
+   238→   238→      "tasks",
+   239→   239→      "filtered",
+   240→   240→      statusFilter,
+   241→   241→      priorityFilter,
+   242→   242→      sourceFilter,
+   243→   243→      groupFilter,
+   244→   244→    ],
+   245→   245→    queryFn: async () => {
+   246→   246→      const r = await fetch(`/api/tasks${queryParams}`);
+   247→   247→      if (!r.ok) return { tasks: [] as SerializedTask[] };
+   248→   248→      return (await r.json()) as { tasks: SerializedTask[] };
+   249→   249→    },
+   250→   250→  });
+   251→   251→  const tasks = tasksData?.tasks ?? [];
+   252→   252→
+   253→   253→  // Client-side search
+   254→   254→  const filteredTasks = React.useMemo(() => {
+   255→   255→    if (!search.trim()) return tasks;
+   256→   256→    const q = search.trim().toLowerCase();
+   257→   257→    return tasks.filter(
+   258→   258→      (t) =>
+   259→   259→        t.title.toLowerCase().includes(q) ||
+   260→   260→        t.code.toLowerCase().includes(q) ||
+   261→   261→        t.assigneeName.toLowerCase().includes(q)
+   262→   262→    );
+   263→   263→  }, [tasks, search]);
+   264→   264→
+   265→   265→  // Derive unique groups from fetched tasks
+   266→   266→  const uniqueGroups = React.useMemo(() => {
+   267→   267→    const set = new Set<string>();
+   268→   268→    tasks.forEach((t) => {
+   269→   269→      if (t.groupId) set.add(t.groupId);
+   270→   270→    });
+   271→   271→    // Create name->id map from the tasks
+   272→   272→    const map = new Map<string, string>();
+   273→   273→    tasks.forEach((t) => {
+   274→   274→      if (t.groupName && t.groupId && !map.has(t.groupId)) {
+   275→   275→        map.set(t.groupId, t.groupName);
+   276→   276→      }
+   277→   277→    });
+   278→   278→    return { ids: Array.from(set), names: map };
+   279→   279→  }, [tasks]);
+   280→   280→
+   281→   281→  function openDetail(task: SerializedTask) {
+   282→   282→    setDetailTask(task);
+   283→   283→    setDetailOpen(true);
+   284→   284→  }
+   285→   285→
+   286→   286→  function refreshAfterUpdate() {
+   287→   287→    queryClient.invalidateQueries({ queryKey: ["tasks"] });
+   288→   288→  }
+   289→   289→
+   290→   290→  return (
+   291→   291→    <div className="flex flex-col h-full gap-3">
+   292→   292→      {/* ---- Toolbar ---- */}
+   293→   293→      <Card className="shrink-0 p-3">
+   294→   294→        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+   295→   295→          {/* Search */}
+   296→   296→          <div className="relative flex-1 min-w-[180px]">
+   297→   297→            <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   298→   298→            <Input
+   299→   299→              placeholder="جستجو در عنوان یا کد..."
+   300→   300→              value={search}
+   301→   301→              onChange={(e) => setSearch(e.target.value)}
+   302→   302→              className="pr-8 h-9 text-sm"
+   303→   303→            />
+   304→   304→          </div>
+   305→   305→
+   306→   306→          {/* Filters */}
+   307→   307→          <div className="flex flex-wrap items-center gap-2">
+   308→   308→            {/* Group */}
+   309→   309→            <Select value={groupFilter} onValueChange={setGroupFilter}>
+   310→   310→              <SelectTrigger className="w-auto min-w-[110px] h-9 text-xs">
+   311→   311→                <SelectValue placeholder="مجموعه" />
+   312→   312→              </SelectTrigger>
+   313→   313→              <SelectContent>
+   314→   314→                <SelectItem value="all">همه مجموعه‌ها</SelectItem>
+   315→   315→                {Array.from(uniqueGroups.names.entries()).map(([id, name]) => (
+   316→   316→                  <SelectItem key={id} value={id}>
+   317→   317→                    {name}
+   318→   318→                  </SelectItem>
+   319→   319→                ))}
+   320→   320→              </SelectContent>
+   321→   321→            </Select>
+   322→   322→
+   323→   323→            {/* Status */}
+   324→   324→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+   325→   325→              <SelectTrigger className="w-auto min-w-[110px] h-9 text-xs">
+   326→   326→                <SelectValue placeholder="وضعیت" />
+   327→   327→              </SelectTrigger>
+   328→   328→              <SelectContent>
+   329→   329→                <SelectItem value="all">همه وضعیت‌ها</SelectItem>
+   330→   330→                {STATUSES.map((s) => (
+   331→   331→                  <SelectItem key={s.key} value={s.key}>
+   332→   332→                    {s.label}
+   333→   333→                  </SelectItem>
+   334→   334→                ))}
+   335→   335→              </SelectContent>
+   336→   336→            </Select>
+   337→   337→
+   338→   338→            {/* Priority */}
+   339→   339→            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+   340→   340→              <SelectTrigger className="w-auto min-w-[100px] h-9 text-xs">
+   341→   341→                <SelectValue placeholder="اولویت" />
+   342→   342→              </SelectTrigger>
+   343→   343→              <SelectContent>
+   344→   344→                <SelectItem value="all">همه اولویت‌ها</SelectItem>
+   345→   345→                {PRIORITIES.map((p) => (
+   346→   346→                  <SelectItem key={p.key} value={p.key}>
+   347→   347→                    {p.label}
+   348→   348→                  </SelectItem>
+   349→   349→                ))}
+   350→   350→              </SelectContent>
+   351→   351→            </Select>
+   352→   352→
+   353→   353→            {/* Source */}
+   354→   354→            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+   355→   355→              <SelectTrigger className="w-auto min-w-[100px] h-9 text-xs">
+   356→   356→                <SelectValue placeholder="منبع" />
+   357→   357→              </SelectTrigger>
+   358→   358→              <SelectContent>
+   359→   359→                <SelectItem value="all">همه منابع</SelectItem>
+   360→   360→                {TASK_SOURCES.map((s) => (
+   361→   361→                  <SelectItem key={s.key} value={s.key}>
+   362→   362→                    {s.label}
+   363→   363→                  </SelectItem>
+   364→   364→                ))}
+   365→   365→              </SelectContent>
+   366→   366→            </Select>
+   367→   367→          </div>
+   368→   368→
+   369→   369→          {/* Count */}
+   370→   370→          <div className="text-xs text-muted-foreground whitespace-nowrap hidden sm:block">
+   371→   371→            {toPersianDigits(filteredTasks.length)} تسک
+   372→   372→          </div>
+   373→   373→
+   374→   374→          {/* Excel actions */}
+   375→   375→          <div className="flex items-center gap-1.5 shrink-0">
+   376→   376→            <Button
+   377→   377→              size="sm"
+   378→   378→              variant="outline"
+   379→   379→              className="gap-1.5 h-9 text-xs"
+   380→   380→              onClick={() => window.open("/api/templates/download?type=tasks", "_blank")}
+   381→   381→            >
+   382→   382→              <Download className="h-3.5 w-3.5" />
+   383→   383→              <span className="hidden sm:inline">تمپلت تسک</span>
+   384→   384→            </Button>
+   385→   385→            <Button
+   386→   386→              size="sm"
+   387→   387→              variant="outline"
+   388→   388→              className="gap-1.5 h-9 text-xs"
+   389→   389→              disabled={importing}
+   390→   390→              onClick={() => taskFileRef.current?.click()}
+   391→   391→            >
+   392→   392→              <Upload className="h-3.5 w-3.5" />
+   393→   393→              <span className="hidden sm:inline">{importing ? "در حال ورود..." : "ورود از اکسل"}</span>
+   394→   394→            </Button>
+   395→   395→            <input
+   396→   396→              ref={taskFileRef}
+   397→   397→              type="file"
+   398→   398→              accept=".xlsx,.xls"
+   399→   399→              className="hidden"
+   400→   400→              onChange={handleTaskImport}
+   401→   401→            />
+   402→   402→          </div>
+   403→   403→        </div>
+   404→   404→      </Card>
+   405→   405→
+   406→   406→      {/* ---- Table ---- */}
+   407→   407→      <Card className="flex-1 overflow-hidden">
+   408→   408→        {isLoading ? (
+   409→   409→          <div className="p-4 space-y-3">
+   410→   410→            {[1, 2, 3, 4, 5].map((i) => (
+   411→   411→              <Skeleton key={i} className="h-12 w-full" />
+   412→   412→            ))}
+   413→   413→          </div>
+   414→   414→        ) : filteredTasks.length === 0 ? (
+   415→   415→          <div className="flex items-center justify-center h-full py-16">
+   416→   416→            <div className="text-center text-sm text-muted-foreground">
+   417→   417→              <Filter className="h-10 w-10 mx-auto mb-3 opacity-30" />
+   418→   418→              <p>تسکی یافت نشد.</p>
+   419→   419→              <p className="text-xs mt-1">
+   420→   420→                فیلترها را تغییر دهید یا جستجوی دیگری انجام دهید.
+   421→   421→              </p>
+   422→   422→            </div>
+   423→   423→          </div>
+   424→   424→        ) : (
+   425→   425→          <ScrollArea className="h-full">
+   426→   426→            <Table>
+   427→   427→              <TableHeader>
+   428→   428→                <TableRow>
+   429→   429→                  <TableHead className="text-xs whitespace-nowrap w-[90px]">کد</TableHead>
+   430→   430→                  <TableHead className="text-xs whitespace-nowrap min-w-[160px]">عنوان</TableHead>
+   431→   431→                  <TableHead className="text-xs whitespace-nowrap hidden md:table-cell">مجموعه</TableHead>
+   432→   432→                  <TableHead className="text-xs whitespace-nowrap hidden md:table-cell">مسئول</TableHead>
+   433→   433→                  <TableHead className="text-xs whitespace-nowrap hidden lg:table-cell">اولویت</TableHead>
+   434→   434→                  <TableHead className="text-xs whitespace-nowrap hidden lg:table-cell">منبع</TableHead>
+   435→   435→                  <TableHead className="text-xs whitespace-nowrap">وضعیت</TableHead>
+   436→   436→                  <TableHead className="text-xs whitespace-nowrap hidden xl:table-cell">ددلاین</TableHead>
+   437→   437→                  <TableHead className="text-xs whitespace-nowrap w-16 text-center">عملیات</TableHead>
+   438→   438→                </TableRow>
+   439→   439→              </TableHeader>
+   440→   440→              <TableBody>
+   441→   441→                {filteredTasks.map((task) => {
+   442→   442→                  const overdue = isOverdue(new Date(task.deadline), task.status);
+   443→   443→                  return (
+   444→   444→                    <TableRow key={task.id} className="group">
+   445→   445→                      <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+   446→   446→                        {task.code}
+   447→   447→                      </TableCell>
+   448→   448→                      <TableCell
+   449→   449→                        className="text-sm font-medium max-w-[200px] sm:max-w-[280px] cursor-pointer truncate"
+   450→   450→                        onClick={() => openDetail(task)}
+   451→   451→                      >
+   452→   452→                        <span className="hover:text-primary transition-colors">
+   453→   453→                          {task.title}
+   454→   454→                        </span>
+   455→   455→                        {overdue && (
+   456→   456→                          <span className="inline-flex items-center gap-0.5 mr-1.5 text-[10px] text-rose-600 dark:text-rose-400">
+   457→   457→                            <AlertTriangle className="h-2.5 w-2.5" />
+   458→   458→                          </span>
+   459→   459→                        )}
+   460→   460→                      </TableCell>
+   461→   461→                      <TableCell className="text-xs text-muted-foreground hidden md:table-cell whitespace-nowrap">
+   462→   462→                        {task.groupName}
+   463→   463→                      </TableCell>
+   464→   464→                      <TableCell className="text-xs hidden md:table-cell whitespace-nowrap">
+   465→   465→                        <div className="flex items-center gap-1.5">
+   466→   466→                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[9px] font-bold shrink-0">
+   467→   467→                            {task.assigneeName.charAt(0)}
+   468→   468→                          </span>
+   469→   469→                          <span className="truncate max-w-[100px]">{task.assigneeName}</span>
+   470→   470→                        </div>
+   471→   471→                      </TableCell>
+   472→   472→                      <TableCell className="hidden lg:table-cell">
+   473→   473→                        <PriorityBadge priority={task.priority} />
+   474→   474→                      </TableCell>
+   475→   475→                      <TableCell className="hidden lg:table-cell">
+   476→   476→                        <SourceBadge source={task.source} />
+   477→   477→                      </TableCell>
+   478→   478→                      <TableCell>
+   479→   479→                        <StatusBadge status={task.status} />
+   480→   480→                      </TableCell>
+   481→   481→                      <TableCell className="hidden xl:table-cell whitespace-nowrap">
+   482→   482→                        <span
+   483→   483→                          className={cn(
+   484→   484→                            "text-xs",
+   485→   485→                            overdue
+   486→   486→                              ? "text-rose-600 dark:text-rose-400 font-medium"
+   487→   487→                              : "text-muted-foreground"
+   488→   488→                          )}
+   489→   489→                        >
+   490→   490→                          {formatJalaliDate(new Date(task.deadline))}
+   491→   491→                        </span>
+   492→   492→                      </TableCell>
+   493→   493→                      <TableCell className="text-center">
+   494→   494→                        <Button
+   495→   495→                          variant="ghost"
+   496→   496→                          size="icon"
+   497→   497→                          className="h-8 w-8"
+   498→   498→                          onClick={() => openDetail(task)}
+   499→   499→                        >
+   500→   500→                          <Eye className="h-3.5 w-3.5" />
+   501→   501→                        </Button>
+   502→   502→                      </TableCell>
+   503→   503→                    </TableRow>
+   504→   504→                  );
+   505→   505→                })}
+   506→   506→              </TableBody>
+   507→   507→            </Table>
+   508→   508→            <ScrollBar orientation="horizontal" />
+   509→   509→            <ScrollBar orientation="vertical" />
+   510→   510→          </ScrollArea>
+   511→   511→        )}
+   512→   512→      </Card>
+   513→   513→
+   514→   514→      {/* ---- Task Detail Sheet ---- */}
+   515→   515→      <TaskDetailSheet
+   516→   516→        key={detailTask?.id ?? "closed"}
+   517→   517→        task={detailTask}
+   518→   518→        open={detailOpen}
+   519→   519→        onOpenChange={(v) => {
+   520→   520→          setDetailOpen(v);
+   521→   521→          if (!v) setDetailTask(null);
+   522→   522→        }}
+   523→   523→        onUpdated={refreshAfterUpdate}
+   524→   524→      />
+   525→   525→    </div>
+   526→   526→  );
+   527→   527→}
+   528→   528→
+   529→   529→/* ------------------------------------------------------------------ */
+   530→   530→/*  TaskDetailSheet — full detail with status change & logs             */
+   531→   531→/* ------------------------------------------------------------------ */
+   532→   532→
+   533→   533→function TaskDetailSheet({
+   534→   534→  task,
+   535→   535→  open,
+   536→   536→  onOpenChange,
+   537→   537→  onUpdated,
+   538→   538→}: {
+   539→   539→  task: SerializedTask | null;
+   540→   540→  open: boolean;
+   541→   541→  onOpenChange: (v: boolean) => void;
+   542→   542→  onUpdated: () => void;
+   543→   543→}) {
+   544→   544→  const [logs, setLogs] = React.useState<SerializedLog[]>([]);
+   545→   545→  const [busy, setBusy] = React.useState(false);
+   546→   546→  const [showReasonPicker, setShowReasonPicker] = React.useState(false);
+   547→   547→  const [showArchivePrompt, setShowArchivePrompt] = React.useState(false);
+   548→   548→
+   549→   549→  React.useEffect(() => {
+   550→   550→    if (!task) return;
+   551→   551→    let cancelled = false;
+   552→   552→    fetch(`/api/tasks/${task.id}`)
+   553→   553→      .then((r) => r.json())
+   554→   554→      .then((d) => {
+   555→   555→        if (!cancelled) setLogs(d.logs ?? []);
+   556→   556→      })
+   557→   557→      .catch(() => {
+   558→   558→        if (!cancelled) setLogs([]);
+   559→   559→      });
+   560→   560→    return () => {
+   561→   561→      cancelled = true;
+   562→   562→    };
+   563→   563→  }, [task]);
+   564→   564→
+   565→   565→  if (!task) return null;
+   566→   566→
+   567→   567→  const overdue = isOverdue(new Date(task.deadline), task.status);
+   568→   568→  const dl = new Date(task.deadline);
+   569→   569→
+   570→   570→  async function updateStatus(status: string) {
+   571→   571→    if (!task) return;
+   572→   572→    setBusy(true);
+   573→   573→    try {
+   574→   574→      const res = await fetch(`/api/tasks/${task.id}`, {
+   575→   575→        method: "PATCH",
+   576→   576→        headers: { "Content-Type": "application/json" },
+   577→   577→        body: JSON.stringify({ status }),
+   578→   578→      });
+   579→   579→      if (!res.ok) throw new Error();
+   580→   580→      const data = await res.json();
+   581→   581→      setLogs(data.logs ?? []);
+   582→   582→      toast.success(
+   583→   583→        status === "STARTED"
+   584→   584→          ? "شروع کردم — وضعیت به‌روزرسانی شد."
+   585→   585→          : status === "DONE"
+   586→   586→            ? "تسک به‌عنوان انجام‌شده ثبت شد."
+   587→   587→            : "وضعیت به‌روزرسانی شد."
+   588→   588→      );
+   589→   589→      if (status === "DONE") setShowArchivePrompt(true);
+   590→   590→      onUpdated();
+   591→   591→    } catch {
+   592→   592→      toast.error("به‌روزرسانی وضعیت ناموفق بود.");
+   593→   593→    } finally {
+   594→   594→      setBusy(false);
+   595→   595→    }
+   596→   596→  }
+   597→   597→
+   598→   598→  async function setReason(reason: string) {
+   599→   599→    if (!task) return;
+   600→   600→    setBusy(true);
+   601→   601→    try {
+   602→   602→      const res = await fetch(`/api/tasks/${task.id}`, {
+   603→   603→        method: "PATCH",
+   604→   604→        headers: { "Content-Type": "application/json" },
+   605→   605→        body: JSON.stringify({ followUpReason: reason, status: "BLOCKED" }),
+   606→   606→      });
+   607→   607→      if (!res.ok) throw new Error();
+   608→   608→      const data = await res.json();
+   609→   609→      setLogs(data.logs ?? []);
+   610→   610→      toast.success("علت عدم انجام ثبت شد.");
+   611→   611→      setShowReasonPicker(false);
+   612→   612→      onUpdated();
+   613→   613→    } catch {
+   614→   614→      toast.error("ثبت علت ناموفق بود.");
+   615→   615→    } finally {
+   616→   616→      setBusy(false);
+   617→   617→    }
+   618→   618→  }
+   619→   619→
+   620→   620→  return (
+   621→   621→    <Sheet open={open} onOpenChange={onOpenChange}>
+   622→   622→      <SheetContent
+   623→   623→        side="left"
+   624→   624→        className="w-full sm:max-w-lg p-0 flex flex-col"
+   625→   625→      >
+   626→   626→        <SheetHeader className="px-5 pt-5 pb-3 border-b">
+   627→   627→          <div className="flex items-center gap-2 mb-1.5">
+   628→   628→            <Badge variant="outline" className="font-mono text-[11px]">
+   629→   629→              {task.code}
+   630→   630→            </Badge>
+   631→   631→            {overdue && (
+   632→   632→              <Badge className="bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 text-[11px]">
+   633→   633→                عقب‌افتاده
+   634→   634→              </Badge>
+   635→   635→            )}
+   636→   636→            {task.approvalStatus && (
+   637→   637→              <ApprovalBadge approvalStatus={task.approvalStatus} />
+   638→   638→            )}
+   639→   639→          </div>
+   640→   640→          <SheetTitle className="text-lg text-right leading-7">
+   641→   641→            {task.title}
+   642→   642→          </SheetTitle>
+   643→   643→          <SheetDescription className="sr-only">جزئیات تسک</SheetDescription>
+   644→   644→          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+   645→   645→            <PriorityBadge priority={task.priority} />
+   646→   646→            <StatusBadge status={task.status} />
+   647→   647→            <SourceBadge source={task.source} />
+   648→   648→          </div>
+   649→   649→        </SheetHeader>
+   650→   650→
+   651→   651→        <ScrollArea className="flex-1">
+   652→   652→          <div className="px-5 py-4 space-y-4">
+   653→   653→            {/* Referred task info */}
+   654→   654→            {task.source === "REFERRED" && (
+   655→   655→              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+   656→   656→                <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-1.5 mb-2">
+   657→   657→                  <FileText className="h-3.5 w-3.5" />
+   658→   658→                  اطلاعات نامه ارجاع
+   659→   659→                </p>
+   660→   660→                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+   661→   661→                  <MetaItem label="شماره نامه" value={task.letterNumber ?? "—"} />
+   662→   662→                  <MetaItem label="تاریخ نامه" value={task.letterDate ?? "—"} />
+   663→   663→                  <MetaItem label="مرجع" value={task.refererName ?? "—"} />
+   664→   664→                  <MetaItem
+   665→   665→                    label="وضعیت تأیید"
+   666→   666→                    value={task.approvalStatusLabel ?? "—"}
+   667→   667→                  />
+   668→   668→                </div>
+   669→   669→              </div>
+   670→   670→            )}
+   671→   671→
+   672→   672→            {/* Meta fields */}
+   673→   673→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+   674→   674→              <MetaRow
+   675→   675→                icon={<User className="h-4 w-4" />}
+   676→   676→                label="مسئول"
+   677→   677→                value={`${task.assigneeName} (${task.assigneeHandle})`}
+   678→   678→              />
+   679→   679→              <MetaRow
+   680→   680→                icon={<CalendarClock className="h-4 w-4" />}
+   681→   681→                label="ددلاین"
+   682→   682→                value={`${formatJalaliLong(dl)} — ${toPersianDigits(formatTime(dl))}`}
+   683→   683→                highlight={overdue}
+   684→   684→              />
+   685→   685→              {task.startTime && (
+   686→   686→                <MetaRow
+   687→   687→                  icon={<PlayCircle className="h-4 w-4" />}
+   688→   688→                  label="زمان شروع"
+   689→   689→                  value={`${formatJalaliLong(new Date(task.startTime))} — ${toPersianDigits(formatTime(new Date(task.startTime)))}`}
+   690→   690→                />
+   691→   691→              )}
+   692→   692→              <MetaRow
+   693→   693→                icon={<Clock className="h-4 w-4" />}
+   694→   694→                label="تاریخ ثبت"
+   695→   695→                value={`${formatJalaliDate(new Date(task.createdAt))} ${toPersianDigits(formatTime(new Date(task.createdAt)))}`}
+   696→   696→              />
+   697→   697→              {task.startedAt && (
+   698→   698→                <MetaRow
+   699→   699→                  icon={<PlayCircle className="h-4 w-4" />}
+   700→   700→                  label="شروع واقعی"
+   701→   701→                  value={`${formatJalaliDate(new Date(task.startedAt))} ${toPersianDigits(formatTime(new Date(task.startedAt)))}`}
+   702→   702→                />
+   703→   703→              )}
+   704→   704→              {task.doneAt && (
+   705→   705→                <MetaRow
+   706→   706→                  icon={<CheckCircle2 className="h-4 w-4" />}
+   707→   707→                  label="انجام شده در"
+   708→   708→                  value={`${formatJalaliDate(new Date(task.doneAt))} ${toPersianDigits(formatTime(new Date(task.doneAt)))}`}
+   709→   709→                />
+   710→   710→              )}
+   711→   711→              <MetaRow
+   712→   712→                icon={<Circle className="h-4 w-4" />}
+   713→   713→                label="مجموعه"
+   714→   714→                value={task.groupName ?? "—"}
+   715→   715→              />
+   716→   716→              <MetaRow
+   717→   717→                icon={<FileText className="h-4 w-4" />}
+   718→   718→                label="منبع"
+   719→   719→                value={task.sourceLabel}
+   720→   720→              />
+   721→   721→            </div>
+   722→   722→
+   723→   723→            {task.description && (
+   724→   724→              <div className="rounded-lg border bg-muted/40 p-3 text-sm leading-6">
+   725→   725→                {task.description}
+   726→   726→              </div>
+   727→   727→            )}
+   728→   728→
+   729→   729→            {task.link && (
+   730→   730→              <a
+   731→   731→                href={task.link}
+   732→   732→                target="_blank"
+   733→   733→                rel="noreferrer"
+   734→   734→                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+   735→   735→              >
+   736→   736→                <Link2 className="h-4 w-4" />
+   737→   737→                لینک مرتبط
+   738→   738→              </a>
+   739→   739→            )}
+   740→   740→
+   741→   741→            {overdue && (
+   742→   742→              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300">
+   743→   743→                این تسک{" "}
+   744→   744→                {toPersianDigits(
+   745→   745→                  Math.abs(daysBetween(dl, new Date()))
+   746→   746→                )}{" "}
+   747→   747→                روز از ددلاین گذشته است.
+   748→   748→              </div>
+   749→   749→            )}
+   750→   750→
+   751→   751→            <Separator />
+   752→   752→
+   753→   753→            {/* Action buttons */}
+   754→   754→            <div className="space-y-3">
+   755→   755→              <div className="flex items-center gap-2 text-sm font-semibold">
+   756→   756→                <MessageSquare className="h-4 w-4" />
+   757→   757→                اعلام وضعیت
+   758→   758→              </div>
+   759→   759→
+   760→   760→              {showArchivePrompt ? (
+   761→   761→                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-800 dark:bg-emerald-950/30">
+   762→   762→                  <div className="flex items-start gap-2 text-sm text-emerald-800 dark:text-emerald-200">
+   763→   763→                    <FileArchive className="h-4 w-4 mt-0.5 shrink-0" />
+   764→   764→                    <div>
+   765→   765→                      <p className="font-medium">تسک انجام شد.</p>
+   766→   766→                      <p className="mt-1 text-emerald-700/80 dark:text-emerald-300/80">
+   767→   767→                        آخرین تغییرات یا فایل را ارسال کنید تا در آرشیو قرار گیرد.
+   768→   768→                      </p>
+   769→   769→                      <Button
+   770→   770→                        size="sm"
+   771→   771→                        variant="outline"
+   772→   772→                        className="mt-2"
+   773→   773→                        onClick={() => {
+   774→   774→                          setShowArchivePrompt(false);
+   775→   775→                          toast.success("ثبت شد.");
+   776→   776→                        }}
+   777→   777→                      >
+   778→   778→                        تأیید
+   779→   779→                      </Button>
+   780→   780→                    </div>
+   781→   781→                  </div>
+   782→   782→                </div>
+   783→   783→              ) : (
+   784→   784→                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+   785→   785→                  <ActionBtn
+   786→   786→                    disabled={
+   787→   787→                      busy ||
+   788→   788→                      task.status === "STARTED" ||
+   789→   789→                      task.status === "DONE"
+   790→   790→                    }
+   791→   791→                    onClick={() => updateStatus("STARTED")}
+   792→   792→                    active={task.status === "STARTED"}
+   793→   793→                    className="border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
+   794→   794→                  >
+   795→   795→                    <PlayCircle className="h-4 w-4" />
+   796→   796→                    شروع کردم
+   797→   797→                  </ActionBtn>
+   798→   798→                  <ActionBtn
+   799→   799→                    disabled={busy || task.status === "DONE"}
+   800→   800→                    onClick={() => setShowReasonPicker(true)}
+   801→   801→                    active={task.status === "BLOCKED"}
+   802→   802→                    className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+   803→   803→                  >
+   804→   804→                    <AlertTriangle className="h-4 w-4" />
+   805→   805→                    انجام نمی‌شود
+   806→   806→                  </ActionBtn>
+   807→   807→                  <ActionBtn
+   808→   808→                    disabled={busy || task.status === "DONE"}
+   809→   809→                    onClick={() => updateStatus("DONE")}
+   810→   810→                    active={task.status === "DONE"}
+   811→   811→                    className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+   812→   812→                  >
+   813→   813→                    <CheckCircle2 className="h-4 w-4" />
+   814→   814→                    انجام شد
+   815→   815→                  </ActionBtn>
+   816→   816→                </div>
+   817→   817→              )}
+   818→   818→
+   819→   819→              {showReasonPicker && (
+   820→   820→                <div className="rounded-lg border border-dashed p-3 space-y-2 bg-muted/30">
+   821→   821→                  <p className="text-xs font-medium text-muted-foreground">
+   822→   822→                    علت عدم انجام را انتخاب کنید:
+   823→   823→                  </p>
+   824→   824→                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+   825→   825→                    {FOLLOW_UP_REASONS.map((r) => (
+   826→   826→                      <Button
+   827→   827→                        key={r.key}
+   828→   828→                        size="sm"
+   829→   829→                        variant="outline"
+   830→   830→                        disabled={busy}
+   831→   831→                        onClick={() => setReason(r.key)}
+   832→   832→                        className="justify-start text-xs"
+   833→   833→                      >
+   834→   834→                        {r.label}
+   835→   835→                      </Button>
+   836→   836→                    ))}
+   837→   837→                  </div>
+   838→   838→                </div>
+   839→   839→              )}
+   840→   840→            </div>
+   841→   841→
+   842→   842→            <Separator />
+   843→   843→
+   844→   844→            {/* Activity log */}
+   845→   845→            <div className="space-y-3">
+   846→   846→              <div className="flex items-center gap-2 text-sm font-semibold">
+   847→   847→                <History className="h-4 w-4" />
+   848→   848→                تاریخچه فعالیت
+   849→   849→              </div>
+   850→   850→              <div className="space-y-2">
+   851→   851→                {logs.length === 0 && (
+   852→   852→                  <p className="text-xs text-muted-foreground">
+   853→   853→                    هنوز فعالیتی ثبت نشده است.
+   854→   854→                  </p>
+   855→   855→                )}
+   856→   856→                {logs.map((log) => (
+   857→   857→                  <div
+   858→   858→                    key={log.id}
+   859→   859→                    className="flex items-start gap-2 text-xs"
+   860→   860→                  >
+   861→   861→                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary/60 shrink-0" />
+   862→   862→                    <div className="flex-1">
+   863→   863→                      <p className="text-foreground/90">{log.message}</p>
+   864→   864→                      <p className="text-muted-foreground mt-0.5">
+   865→   865→                        {formatJalaliDate(new Date(log.createdAt))}{" "}
+   866→   866→                        {toPersianDigits(formatTime(new Date(log.createdAt)))}
+   867→   867→                      </p>
+   868→   868→                    </div>
+   869→   869→                  </div>
+   870→   870→                ))}
+   871→   871→              </div>
+   872→   872→            </div>
+   873→   873→          </div>
+   874→   874→        </ScrollArea>
+   875→   875→      </SheetContent>
+   876→   876→    </Sheet>
+   877→   877→  );
+   878→   878→}
+   879→   879→
+   880→   880→/* ------------------------------------------------------------------ */
+   881→   881→/*  Sub-components                                                      */
+   882→   882→/* ------------------------------------------------------------------ */
+   883→   883→
+   884→   884→function ApprovalBadge({ approvalStatus }: { approvalStatus: string }) {
+   885→   885→  const a = approvalStatusByKey(approvalStatus);
+   886→   886→  if (!a) return null;
+   887→   887→  const colorMap: Record<string, string> = {
+   888→   888→    PENDING_APPROVAL:
+   889→   889→      "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300",
+   890→   890→    APPROVED:
+   891→   891→      "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300",
+   892→   892→    REJECTED:
+   893→   893→      "bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300",
+   894→   894→  };
+   895→   895→  return (
+   896→   896→    <span
+   897→   897→      className={cn(
+   898→   898→        "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium",
+   899→   899→        colorMap[approvalStatus] ?? colorMap.PENDING_APPROVAL
+   900→   900→      )}
+   901→   901→    >
+   902→   902→      {a.label}
+   903→   903→    </span>
+   904→   904→  );
+   905→   905→}
+   906→   906→
+   907→   907→function MetaItem({
+   908→   908→  label,
+   909→   909→  value,
+   910→   910→  warn,
+   911→   911→}: {
+   912→   912→  label: string;
+   913→   913→  value: string;
+   914→   914→  warn?: boolean;
+   915→   915→}) {
+   916→   916→  return (
+   917→   917→    <div>
+   918→   918→      <span className="text-xs text-muted-foreground">{label}</span>
+   919→   919→      <p className={cn("text-xs", warn && "text-rose-600 dark:text-rose-400 font-medium")}>
+   920→   920→        {value}
+   921→   921→      </p>
+   922→   922→    </div>
+   923→   923→  );
+   924→   924→}
+   925→   925→
+   926→   926→function MetaRow({
+   927→   927→  icon,
+   928→   928→  label,
+   929→   929→  value,
+   930→   930→  highlight,
+   931→   931→}: {
+   932→   932→  icon: React.ReactNode;
+   933→   933→  label: string;
+   934→   934→  value: string;
+   935→   935→  highlight?: boolean;
+   936→   936→}) {
+   937→   937→  return (
+   938→   938→    <div className="flex items-start gap-2">
+   939→   939→      <span className="mt-0.5 text-muted-foreground">{icon}</span>
+   940→   940→      <div>
+   941→   941→        <div className="text-xs text-muted-foreground">{label}</div>
+   942→   942→        <div
+   943→   943→          className={cn(
+   944→   944→            highlight && "text-rose-600 dark:text-rose-400 font-medium"
+   945→   945→          )}
+   946→   946→        >
+   947→   947→          {value}
+   948→   948→        </div>
+   949→   949→      </div>
+   950→   950→    </div>
+   951→   951→  );
+   952→   952→}
+   953→   953→
+   954→   954→function ActionBtn({
+   955→   955→  children,
+   956→   956→  active,
+   957→   957→  className,
+   958→   958→  ...props
+   959→   959→}: React.ComponentProps<typeof Button> & { active?: boolean }) {
+   960→   960→  return (
+   961→   961→    <Button
+   962→   962→      size="sm"
+   963→   963→      variant="outline"
+   964→   964→      className={cn(
+   965→   965→        "justify-center gap-1.5 text-xs h-9",
+   966→   966→        active && "ring-2 ring-offset-1 ring-current/30",
+   967→   967→        className
+   968→   968→      )}
+   969→   969→      {...props}
+   970→   970→    >
+   971→   971→      {children}
+   972→   972→    </Button>
+   973→   973→  );
+   974→   974→}
+   975→   975→
