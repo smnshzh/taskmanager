@@ -25,22 +25,22 @@ async function main() {
   const mgr1 = await db.member.create({
     data: { name: "مهندس رضایی", handle: "@mgr1", password: "admin", role: "MANAGER", group: { connect: { id: grp1.id } } },
   });
-  await db.orgGroup.update({ where: { id: grp1.id }, data: { managerId: mgr1.id } });
+  await db.groupManager.create({ data: { groupId: grp1.id, memberId: mgr1.id } });
 
   const mgr2 = await db.member.create({
     data: { name: "مهندس احمدی", handle: "@mgr2", password: "admin", role: "MANAGER", group: { connect: { id: grp2.id } } },
   });
-  await db.orgGroup.update({ where: { id: grp2.id }, data: { managerId: mgr2.id } });
+  await db.groupManager.create({ data: { groupId: grp2.id, memberId: mgr2.id } });
 
   const mgr3 = await db.member.create({
     data: { name: "مهندس نوری", handle: "@mgr3", password: "admin", role: "MANAGER", group: { connect: { id: grp3.id } } },
   });
-  await db.orgGroup.update({ where: { id: grp3.id }, data: { managerId: mgr3.id } });
+  await db.groupManager.create({ data: { groupId: grp3.id, memberId: mgr3.id } });
 
   const mgr4 = await db.member.create({
     data: { name: "مهندس موسوی", handle: "@mgr4", password: "admin", role: "MANAGER", group: { connect: { id: grp4.id } } },
   });
-  await db.orgGroup.update({ where: { id: grp4.id }, data: { managerId: mgr4.id } });
+  await db.groupManager.create({ data: { groupId: grp4.id, memberId: mgr4.id } });
 
   // ---- Supervisors ----
   const sup1 = await db.member.create({

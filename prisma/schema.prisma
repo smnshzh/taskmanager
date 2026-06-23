@@ -16,12 +16,25 @@ model OrgGroup {
   id        String   @id @default(cuid())
   name      String   // e.g. "تأمین فانتزی", "هوش تجاری"
   code      String   @unique // e.g. "GRP-001"
-  managerId String?  @unique  
-  manager   Member?  @relation("GroupManager", fields: [managerId], references: [id], onDelete: SetNull)
   members   Member[]
+  managers  GroupManager[]
   taskTemplates TaskTemplate[]
   tasks         Task[]
   createdAt DateTime @default(now())
+}
+
+// ---- Group-Manager junction (many-to-many) ----
+model GroupManager {
+  id        String   @id @default(cuid())
+  groupId   String
+  group     OrgGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([groupId, memberId])
+  @@index([groupId])
+  @@index([memberId])
 }
 
 // ---- Team members with hierarchical roles ----
@@ -40,7 +53,7 @@ model Member {
   supervisorId    String?
   supervisor      Member?    @relation("Supervision", fields: [supervisorId], references: [id], onDelete: SetNull)
   subordinates    Member[]   @relation("Supervision")
-  managedGroup    OrgGroup?  @relation("GroupManager")
+  managedGroups  GroupManager[]
   avatar          String?
   createdAt       DateTime   @default(now())
   lastLoginAt     DateTime?

@@ -236,7 +236,7 @@ export async function POST(req: NextRequest) {
     });
     const memberByHandle = new Map(allMembers.map((m) => [m.handle, m]));
 
-    const myGroupId = me.managedGroup?.id;
+    const myGroupId = me.managedGroups?.[0]?.groupId;
     let created = 0;
     const errors: string[] = [];
 
