@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentMember, isManagerOfGroup, getManagedGroupIds } from "@/lib/auth";
+import { toGregorian, toEnglishDigits } from "@/lib/jalali";
 import * as XLSX from "xlsx";
 
 // Priority label to key mapping (Persian)
@@ -37,28 +38,39 @@ const DAY_MAP: Record<string, number> = {
   "جمعه": 6,
 };
 
-// Convert Jalali date (YYYY-MM-DD) to a Date object
-// Since we store as ISO string, we just pass it through — Prisma will handle it
+// Convert a date string to a Date object.
+// Supports:
+//   1. Jalali (Shamsi) YYYY-MM-DD — e.g. "1404-04-05" or "۱۴۰۴-۰۴-۰۵"
+//   2. Gregorian ISO — e.g. "2025-09-27"
+// Detection: if year is 1200-1600 → treat as Jalali and convert via toGregorian()
 function parseDate(val: string): Date | null {
   if (!val || typeof val !== "string") return null;
-  const trimmed = val.trim();
+  let trimmed = val.trim();
   if (!trimmed) return null;
 
-  // Try ISO format first
-  const isoDate = new Date(trimmed);
-  if (!isNaN(isoDate.getTime())) return isoDate;
+  // Convert Persian/Arabic digits to English
+  trimmed = toEnglishDigits(trimmed);
 
-  // If it's in YYYY-MM-DD format (could be Jalali), just store as-is string for Prisma
-  // We'll create a Date that preserves the date part
+  // Try Gregorian ISO parse first (year < 1200 or > 1600)
   const parts = trimmed.split("-");
   if (parts.length === 3) {
     const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1;
+    const month = parseInt(parts[1], 10);
     const day = parseInt(parts[2], 10);
-    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
-      return new Date(year, month, day);
+    if (!isNaN(year) && !isNaN(month) && !isNaN(day) && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      // Jalali range check: 1200–1600 → convert to Gregorian
+      if (year >= 1200 && year <= 1600) {
+        const [gy, gm, gd] = toGregorian(year, month, day);
+        return new Date(gy, gm - 1, gd);
+      }
+      // Otherwise treat as Gregorian
+      return new Date(year, month - 1, day);
     }
   }
+
+  // Fallback: try native Date parse
+  const fallback = new Date(trimmed);
+  if (!isNaN(fallback.getTime())) return fallback;
 
   return null;
 }
