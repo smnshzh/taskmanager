@@ -16,7 +16,7 @@ model OrgGroup {
   id        String   @id @default(cuid())
   name      String   // e.g. "تأمین فانتزی", "هوش تجاری"
   code      String   @unique // e.g. "GRP-001"
-  managerId String?  @unique
+  managerId String?  
   manager   Member?  @relation("GroupManager", fields: [managerId], references: [id], onDelete: SetNull)
   members   Member[]
   taskTemplates TaskTemplate[]
