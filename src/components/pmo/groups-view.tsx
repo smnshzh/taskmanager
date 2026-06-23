@@ -241,7 +241,7 @@ export function GroupsView() {
 
       {/* Add Group Dialog */}
       <GroupFormDialog
-        key={addKey}
+        key={`add-${addKey}`}
         open={addOpen}
         onOpenChange={setAddOpen}
         managers={managers}
@@ -250,7 +250,7 @@ export function GroupsView() {
 
       {/* Edit Group Dialog */}
       <GroupFormDialog
-        key={editKey}
+        key={`edit-${editKey}`}
         open={!!editGroup}
         onOpenChange={(v) => !v && setEditGroup(null)}
         editing={editGroup}
