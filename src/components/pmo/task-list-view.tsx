@@ -68,6 +68,8 @@ import {
   PlayCircle,
   FileText,
   Eye,
+  Upload,
+  Download,
   Search,
   Filter,
   CalendarClock,
@@ -185,6 +187,39 @@ export function TaskListView() {
   // Detail sheet
   const [detailTask, setDetailTask] = React.useState<SerializedTask | null>(null);
   const [detailOpen, setDetailOpen] = React.useState(false);
+
+  // Excel import
+  const taskFileRef = React.useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = React.useState(false);
+
+  const handleTaskImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const r = await fetch("/api/tasks/import", { method: "POST", body: fd });
+      const data = await r.json();
+      if (r.ok || r.status === 201) {
+        queryClient.invalidateQueries({ queryKey: ["tasks"] });
+        const msg = data.created
+          ? `${data.created} تسک با موفقیت وارد شد.`
+          : "تسکی وارد نشد.";
+        toast.success(msg);
+        if (data.errors?.length > 0) {
+          toast.error(`${toPersianDigits(data.errors.length)} خطا: ${data.errors.slice(0, 3).join(" | ")}`);
+        }
+      } else {
+        toast.error(data.error ?? "خطا در وارد کردن فایل اکسل.");
+      }
+    } catch {
+      toast.error("خطا در ارسال فایل.");
+    } finally {
+      setImporting(false);
+      if (taskFileRef.current) taskFileRef.current.value = "";
+    }
+  };
 
   // Build query params
   const queryParams = React.useMemo(() => {
@@ -334,6 +369,36 @@ export function TaskListView() {
           {/* Count */}
           <div className="text-xs text-muted-foreground whitespace-nowrap hidden sm:block">
             {toPersianDigits(filteredTasks.length)} تسک
+          </div>
+
+          {/* Excel actions */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 h-9 text-xs"
+              onClick={() => window.open("/api/templates/download?type=tasks", "_blank")}
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">تمپلت تسک</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 h-9 text-xs"
+              disabled={importing}
+              onClick={() => taskFileRef.current?.click()}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{importing ? "در حال ورود..." : "ورود از اکسل"}</span>
+            </Button>
+            <input
+              ref={taskFileRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleTaskImport}
+            />
           </div>
         </div>
       </Card>

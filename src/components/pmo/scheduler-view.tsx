@@ -61,6 +61,7 @@ import {
   CalendarClock,
   Filter,
   Users,
+  Download,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -283,6 +284,16 @@ export function SchedulerView() {
           >
             <Upload className="h-4 w-4" />
             <span className="hidden sm:inline">ورود از اکسل</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => window.open("/api/templates/download?type=schedules", "_blank")}
+            disabled={!groupId}
+            className="gap-1.5"
+          >
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">تمپلت زمان‌بندی</span>
           </Button>
           <input
             ref={fileInputRef}
