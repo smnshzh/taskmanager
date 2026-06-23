@@ -64,10 +64,10 @@ export async function PATCH(
       return NextResponse.json({ error: "الگو یافت نشد." }, { status: 404 });
     }
 
-    // Only SUPER_ADMIN, MANAGER (own group), SUPERVISOR (own group) can update
-    if (me.role === "SPECIALIST") {
+    // Only SUPER_ADMIN and MANAGER (own group) can update
+    if (me.role === "SPECIALIST" || me.role === "SUPERVISOR") {
       return NextResponse.json(
-        { error: "کارشناس نمی‌تواند الگو را ویرایش کند." },
+        { error: "شما مجاز به ویرایش الگو نیستید." },
         { status: 403 }
       );
     }
@@ -120,9 +120,10 @@ export async function DELETE(
       return NextResponse.json({ error: "الگو یافت نشد." }, { status: 404 });
     }
 
-    if (me.role === "SPECIALIST") {
+    // Only SUPER_ADMIN and MANAGER (own group) can delete
+    if (me.role === "SPECIALIST" || me.role === "SUPERVISOR") {
       return NextResponse.json(
-        { error: "کارشناس نمی‌تواند الگو را حذف کند." },
+        { error: "شما مجاز به حذف الگو نیستید." },
         { status: 403 }
       );
     }
@@ -134,6 +135,8 @@ export async function DELETE(
       );
     }
 
+    // Delete associated schedules first, then the template
+    await db.taskSchedule.deleteMany({ where: { taskTemplateId: id } });
     await db.taskTemplate.delete({ where: { id } });
 
     return NextResponse.json({ ok: true });

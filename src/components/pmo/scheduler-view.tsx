@@ -62,6 +62,8 @@ import {
   Filter,
   Users,
   Download,
+  Pencil,
+  ListChecks,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -87,8 +89,12 @@ export function SchedulerView() {
   const [addOpen, setAddOpen] = React.useState(false);
   const [overrideOpen, setOverrideOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [templateMgrOpen, setTemplateMgrOpen] = React.useState(false);
   const [targetSchedule, setTargetSchedule] =
     React.useState<SerializedSchedule | null>(null);
+
+  // Only MANAGER and SUPER_ADMIN can manage templates
+  const canManageTemplates = member?.role === "MANAGER" || member?.role === "SUPER_ADMIN";
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -295,6 +301,18 @@ export function SchedulerView() {
             <Download className="h-4 w-4" />
             <span className="hidden sm:inline">تمپلت زمان‌بندی</span>
           </Button>
+          {canManageTemplates && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setTemplateMgrOpen(true)}
+              disabled={!groupId}
+              className="gap-1.5"
+            >
+              <ListChecks className="h-4 w-4" />
+              <span className="hidden sm:inline">مدیریت الگوها</span>
+            </Button>
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -481,6 +499,25 @@ export function SchedulerView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ---- Template Manager Dialog ---- */}
+      <Dialog open={templateMgrOpen} onOpenChange={setTemplateMgrOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>مدیریت الگوهای تسک</DialogTitle>
+            <DialogDescription>
+              ویرایش یا حذف الگوهای مجموعه. حذف الگو، تمام زمان‌بندی‌های مرتبط را نیز حذف می‌کند.
+            </DialogDescription>
+          </DialogHeader>
+          <TemplateManager
+            key={templateMgrOpen ? "open" : "closed"}
+            templates={templates}
+            onSuccess={() => {
+              setTemplateMgrOpen(false);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -886,5 +923,235 @@ function OverrideForm({ schedule, members, onSuccess }: OverrideFormProps) {
         </Button>
       </DialogFooter>
     </>
+  );
+}
+
+/* ================================================================== */
+/*  Template Manager — Edit / Delete templates with schedules           */
+/* ================================================================== */
+
+interface TemplateManagerProps {
+  templates: SerializedTaskTemplate[];
+  onSuccess: () => void;
+}
+
+function TemplateManager({ templates, onSuccess }: TemplateManagerProps) {
+  const queryClient = useQueryClient();
+  const [editId, setEditId] = React.useState<string | null>(null);
+  const [editName, setEditName] = React.useState("");
+  const [editDesc, setEditDesc] = React.useState("");
+  const [editPriority, setEditPriority] = React.useState("MEDIUM");
+  const [deleteConfirmId, setDeleteConfirmId] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const startEdit = (t: SerializedTaskTemplate) => {
+    setEditId(t.id);
+    setEditName(t.name);
+    setEditDesc(t.description ?? "");
+    setEditPriority(t.priority);
+    setDeleteConfirmId(null);
+  };
+
+  const cancelEdit = () => {
+    setEditId(null);
+    setEditName("");
+    setEditDesc("");
+    setEditPriority("MEDIUM");
+  };
+
+  const handleSave = async () => {
+    if (!editId || !editName.trim()) {
+      toast.error("نام الگو الزامی است.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/templates/${editId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName.trim(),
+          description: editDesc.trim() || null,
+          priority: editPriority,
+        }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        toast.error(data.error ?? "خطا در ویرایش الگو");
+        return;
+      }
+      toast.success("الگو با موفقیت ویرایش شد.");
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
+      cancelEdit();
+    } catch {
+      toast.error("خطا در ارسال درخواست.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/templates/${id}`, { method: "DELETE" });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        toast.error(data.error ?? "خطا در حذف الگو");
+        return;
+      }
+      toast.success("الگو و زمان‌بندی‌های مرتبط حذف شدند.");
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      setDeleteConfirmId(null);
+    } catch {
+      toast.error("خطا در ارسال درخواست.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (templates.length === 0) {
+    return (
+      <div className="py-8 text-center text-sm text-muted-foreground">
+        هیچ الگویی برای این مجموعه وجود ندارد.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {templates.map((t) => (
+        <div
+          key={t.id}
+          className="rounded-lg border p-3 space-y-2"
+        >
+          {editId === t.id ? (
+            /* ---- Edit mode ---- */
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">نام الگو</Label>
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="نام الگو..."
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">توضیحات</Label>
+                <Input
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  placeholder="توضیحات (اختیاری)..."
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">اولویت</Label>
+                <Select value={editPriority} onValueChange={setEditPriority}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRIORITIES.map((p) => (
+                      <SelectItem key={p.key} value={p.key}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" onClick={handleSave} disabled={submitting}>
+                  {submitting ? "در حال ذخیره..." : "ذخیره"}
+                </Button>
+                <Button size="sm" variant="outline" onClick={cancelEdit}>
+                  انصراف
+                </Button>
+              </div>
+            </div>
+          ) : (
+            /* ---- View mode ---- */
+            <>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm">{t.name}</div>
+                  {t.description && (
+                    <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                      {t.description}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0"
+                    onClick={() => startEdit(t)}
+                    title="ویرایش"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                    onClick={() => {
+                      setDeleteConfirmId(t.id);
+                      setEditId(null);
+                    }}
+                    title="حذف"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Badge
+                  variant="outline"
+                  className={cn("text-[10px] px-1.5 py-0", PRIORITY_BADGE[t.priority])}
+                >
+                  {priorityByKey(t.priority)?.label ?? t.priority}
+                </Badge>
+                <span>
+                  {t.scheduleCount > 0
+                    ? `${t.scheduleCount} زمان‌بندی فعال`
+                    : "بدون زمان‌بندی"}
+                </span>
+              </div>
+
+              {/* Delete confirmation inline */}
+              {deleteConfirmId === t.id && (
+                <div className="rounded-md bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50 p-2.5 space-y-2">
+                  <p className="text-xs text-rose-700 dark:text-rose-300">
+                    {t.scheduleCount > 0
+                      ? `این الگو ${t.scheduleCount} زمان‌بندی فعال دارد. با حذف، تمام آن‌ها حذف خواهند شد. آیا مطمئن هستید؟`
+                      : "آیا از حذف این الگو مطمئن هستید؟"}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="bg-rose-600 hover:bg-rose-700 h-7 text-xs"
+                      onClick={() => handleDelete(t.id)}
+                      disabled={submitting}
+                    >
+                      {submitting ? "در حال حذف..." : "بله، حذف شود"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => setDeleteConfirmId(null)}
+                    >
+                      انصراف
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }

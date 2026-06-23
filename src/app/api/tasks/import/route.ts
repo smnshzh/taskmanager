@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentMember, isManagerOfGroup, getManagedGroupIds } from "@/lib/auth";
+import { getCurrentMember } from "@/lib/auth";
 import { toGregorian, toEnglishDigits } from "@/lib/jalali";
 import * as XLSX from "xlsx";
 
@@ -18,7 +18,6 @@ const PRIORITY_MAP: Record<string, string> = {
 const SOURCE_MAP: Record<string, string> = {
   "دستی": "MANUAL",
   "ارجاع نامه‌ای": "REFERRED",
-  "ارجاع نامه\u200Cای": "REFERRED",
   "MANUAL": "MANUAL",
   "REFERRED": "REFERRED",
 };
@@ -30,49 +29,35 @@ const DAY_MAP: Record<string, number> = {
   "دوشنبه": 2,
   "سه‌شنبه": 3,
   "سه شنبه": 3,
-  "سه\u200Cشنبه": 3,
   "چهارشنبه": 4,
   "پنجشنبه": 5,
   "پنج شنبه": 5,
-  "پنج\u200Cشنبه": 5,
   "جمعه": 6,
 };
 
-// Convert a date string to a Date object.
-// Supports:
-//   1. Jalali (Shamsi) YYYY-MM-DD — e.g. "1404-04-05" or "۱۴۰۴-۰۴-۰۵"
-//   2. Gregorian ISO — e.g. "2025-09-27"
-// Detection: if year is 1200-1600 → treat as Jalali and convert via toGregorian()
+// Convert date string (Gregorian or Jalali YYYY-MM-DD) to a Date object (Gregorian)
 function parseDate(val: string): Date | null {
   if (!val || typeof val !== "string") return null;
-  let trimmed = val.trim();
+  const trimmed = toEnglishDigits(val.trim());
   if (!trimmed) return null;
 
-  // Convert Persian/Arabic digits to English
-  trimmed = toEnglishDigits(trimmed);
-
-  // Try Gregorian ISO parse first (year < 1200 or > 1600)
   const parts = trimmed.split("-");
-  if (parts.length === 3) {
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10);
-    const day = parseInt(parts[2], 10);
-    if (!isNaN(year) && !isNaN(month) && !isNaN(day) && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      // Jalali range check: 1200–1600 → convert to Gregorian
-      if (year >= 1200 && year <= 1600) {
-        const [gy, gm, gd] = toGregorian(year, month, day);
-        return new Date(gy, gm - 1, gd);
-      }
-      // Otherwise treat as Gregorian
-      return new Date(year, month - 1, day);
-    }
+  if (parts.length !== 3) return null;
+
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  // Detect Jalali year (1200–1600) and convert to Gregorian
+  if (year >= 1200 && year <= 1600) {
+    const [gy, gm, gd] = toGregorian(year, month, day);
+    return new Date(gy, gm - 1, gd);
   }
 
-  // Fallback: try native Date parse
-  const fallback = new Date(trimmed);
-  if (!isNaN(fallback.getTime())) return fallback;
-
-  return null;
+  // Gregorian date
+  return new Date(year, month - 1, day);
 }
 
 // Parse HH:MM time and return ISO datetime for today
@@ -251,7 +236,7 @@ export async function POST(req: NextRequest) {
     });
     const memberByHandle = new Map(allMembers.map((m) => [m.handle, m]));
 
-    const myManagedGroupIds = me.role === "MANAGER" ? getManagedGroupIds(me) : [];
+    const myGroupId = me.managedGroup?.id;
     let created = 0;
     const errors: string[] = [];
 
@@ -271,8 +256,8 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        // MANAGER: only their managed groups
-        if (me.role === "MANAGER" && !myManagedGroupIds.includes(group.id)) {
+        // MANAGER: only their group
+        if (me.role === "MANAGER" && group.id !== myGroupId) {
           errors.push(`ردیف ${rowNum}: دسترسی به مجموعه "${groupName}" غیرمجاز.`);
           continue;
         }
@@ -291,7 +276,7 @@ export async function POST(req: NextRequest) {
 
         // Role-based checks
         if (me.role === "MANAGER") {
-          if (!myManagedGroupIds.includes(assignee.groupId)) {
+          if (assignee.groupId !== myGroupId) {
             errors.push(`ردیف ${rowNum}: مسئول باید عضو مجموعه شما باشد.`);
             continue;
           }
