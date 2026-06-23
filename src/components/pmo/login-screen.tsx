@@ -197,24 +197,7 @@ export function LoginScreen() {
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              {DEMO_ACCOUNTS.map((a) => (
-                <button
-                  key={a.handle}
-                  onClick={() => quickLogin(a.handle, a.password)}
-                  disabled={busy}
-                  className={cn(
-                    "rounded-lg border p-2 text-right text-xs transition-all hover:shadow-sm",
-                    a.color
-                  )}
-                >
-                  <div className="font-medium">{a.label}</div>
-                  <div className="text-muted-foreground mt-0.5" dir="ltr">
-                    {a.handle} / {a.password}
-                  </div>
-                </button>
-              ))}
-            </div>
+            
           </CardContent>
         </Card>
       </div>
