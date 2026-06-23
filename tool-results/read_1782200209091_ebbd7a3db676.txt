@@ -1,0 +1,879 @@
+     1→     1→"use client";
+     2→     2→
+     3→     3→import * as React from "react";
+     4→     4→import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+     5→     5→import { useTMStore } from "@/lib/pmo-store";
+     6→     6→import { PERSIAN_WEEK_DAYS, PRIORITIES, priorityByKey } from "@/lib/constants";
+     7→     7→import { toPersianDigits } from "@/lib/jalali";
+     8→     8→import type {
+     9→     9→  SerializedGroup,
+    10→    10→  SerializedMember,
+    11→    11→  SerializedSchedule,
+    12→    12→  SerializedTaskTemplate,
+    13→    13→} from "@/lib/serialize";
+    14→    14→
+    15→    15→import { Button } from "@/components/ui/button";
+    16→    16→import { Badge } from "@/components/ui/badge";
+    17→    17→import { Input } from "@/components/ui/input";
+    18→    18→import { Label } from "@/components/ui/label";
+    19→    19→import { Checkbox } from "@/components/ui/checkbox";
+    20→    20→import { Skeleton } from "@/components/ui/skeleton";
+    21→    21→import {
+    22→    22→  Select,
+    23→    23→  SelectContent,
+    24→    24→  SelectItem,
+    25→    25→  SelectTrigger,
+    26→    26→  SelectValue,
+    27→    27→} from "@/components/ui/select";
+    28→    28→import {
+    29→    29→  Dialog,
+    30→    30→  DialogContent,
+    31→    31→  DialogHeader,
+    32→    32→  DialogTitle,
+    33→    33→  DialogDescription,
+    34→    34→  DialogFooter,
+    35→    35→} from "@/components/ui/dialog";
+    36→    36→import {
+    37→    37→  AlertDialog,
+    38→    38→  AlertDialogAction,
+    39→    39→  AlertDialogCancel,
+    40→    40→  AlertDialogContent,
+    41→    41→  AlertDialogDescription,
+    42→    42→  AlertDialogFooter,
+    43→    43→  AlertDialogHeader,
+    44→    44→  AlertDialogTitle,
+    45→    45→} from "@/components/ui/alert-dialog";
+    46→    46→import {
+    47→    47→  Table,
+    48→    48→  TableBody,
+    49→    49→  TableCell,
+    50→    50→  TableHead,
+    51→    51→  TableHeader,
+    52→    52→  TableRow,
+    53→    53→} from "@/components/ui/table";
+    54→    54→import { toast } from "sonner";
+    55→    55→import { cn } from "@/lib/utils";
+    56→    56→import {
+    57→    57→  Plus,
+    58→    58→  Upload,
+    59→    59→  Trash2,
+    60→    60→  UserPlus,
+    61→    61→  CalendarClock,
+    62→    62→  Filter,
+    63→    63→  Users,
+    64→    64→} from "lucide-react";
+    65→    65→
+    66→    66→/* ------------------------------------------------------------------ */
+    67→    67→/*  Priority color mapping                                              */
+    68→    68→/* ------------------------------------------------------------------ */
+    69→    69→
+    70→    70→const PRIORITY_BADGE: Record<string, string> = {
+    71→    71→  HIGH: "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200",
+    72→    72→  MEDIUM: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200",
+    73→    73→  LOW: "bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-300 border-slate-200",
+    74→    74→};
+    75→    75→
+    76→    76→/* ------------------------------------------------------------------ */
+    77→    77→/*  SchedulerView                                                       */
+    78→    78→/* ------------------------------------------------------------------ */
+    79→    79→
+    80→    80→export function SchedulerView() {
+    81→    81→  const queryClient = useQueryClient();
+    82→    82→  const member = useTMStore((s) => s.member);
+    83→    83→
+    84→    84→  const initialGroupId = member?.groupId ?? "";
+    85→    85→  const [groupId, setGroupId] = React.useState(initialGroupId);
+    86→    86→  const [addOpen, setAddOpen] = React.useState(false);
+    87→    87→  const [overrideOpen, setOverrideOpen] = React.useState(false);
+    88→    88→  const [deleteOpen, setDeleteOpen] = React.useState(false);
+    89→    89→  const [targetSchedule, setTargetSchedule] =
+    90→    90→    React.useState<SerializedSchedule | null>(null);
+    91→    91→
+    92→    92→  const fileInputRef = React.useRef<HTMLInputElement>(null);
+    93→    93→
+    94→    94→  /* ---- Queries ---- */
+    95→    95→  const { data: groupsData } = useQuery<{
+    96→    96→    groups: SerializedGroup[];
+    97→    97→  }>({
+    98→    98→    queryKey: ["groups"],
+    99→    99→    queryFn: () => fetch("/api/groups").then((r) => r.json()),
+   100→   100→  });
+   101→   101→  const groups = groupsData?.groups ?? [];
+   102→   102→
+   103→   103→  const { data: schedulesData, isLoading: schedulesLoading } = useQuery<{
+   104→   104→    schedules: SerializedSchedule[];
+   105→   105→  }>({
+   106→   106→    queryKey: ["schedules", groupId],
+   107→   107→    queryFn: () => fetch(`/api/schedules?groupId=${groupId}`).then((r) => r.json()),
+   108→   108→    enabled: !!groupId,
+   109→   109→  });
+   110→   110→  const schedules = schedulesData?.schedules ?? [];
+   111→   111→
+   112→   112→  const { data: templatesData } = useQuery<{
+   113→   113→    templates: SerializedTaskTemplate[];
+   114→   114→  }>({
+   115→   115→    queryKey: ["templates", groupId],
+   116→   116→    queryFn: () => fetch(`/api/templates?groupId=${groupId}`).then((r) => r.json()),
+   117→   117→    enabled: !!groupId,
+   118→   118→  });
+   119→   119→  const templates = templatesData?.templates ?? [];
+   120→   120→
+   121→   121→  const { data: membersData } = useQuery<{
+   122→   122→    members: SerializedMember[];
+   123→   123→  }>({
+   124→   124→    queryKey: ["members", groupId],
+   125→   125→    queryFn: () => fetch(`/api/members?groupId=${groupId}`).then((r) => r.json()),
+   126→   126→    enabled: !!groupId,
+   127→   127→  });
+   128→   128→  const members = membersData?.members ?? [];
+   129→   129→
+   130→   130→  // Get template priority by id
+   131→   131→  const templatePriorityMap = React.useMemo(() => {
+   132→   132→    const map: Record<string, string> = {};
+   133→   133→    templates.forEach((t) => {
+   134→   134→      map[t.id] = t.priority;
+   135→   135→    });
+   136→   136→    return map;
+   137→   137→  }, [templates]);
+   138→   138→
+   139→   139→  /* ---- Build table data ---- */
+   140→   140→  const tableData = React.useMemo(() => {
+   141→   141→    const assigneeMap = new Map<
+   142→   142→      string,
+   143→   143→      {
+   144→   144→        name: string;
+   145→   145→        slots: Map<
+   146→   146→          string,
+   147→   147→          Map<number, { schedule: SerializedSchedule; priority: string }[]>
+   148→   148→        >;
+   149→   149→      }
+   150→   150→    >();
+   151→   151→
+   152→   152→    for (const s of schedules) {
+   153→   153→      const aName = s.overrideAssigneeName ?? s.assigneeName;
+   154→   154→      const aId = s.overrideAssigneeId ?? s.assigneeId;
+   155→   155→      if (!assigneeMap.has(aId)) {
+   156→   156→        assigneeMap.set(aId, {
+   157→   157→          name: aName,
+   158→   158→          slots: new Map(),
+   159→   159→        });
+   160→   160→      }
+   161→   161→      const entry = assigneeMap.get(aId)!;
+   162→   162→      const timeKey = `${s.startTime}-${s.endTime}`;
+   163→   163→      if (!entry.slots.has(timeKey)) {
+   164→   164→        entry.slots.set(timeKey, new Map());
+   165→   165→      }
+   166→   166→      const dayMap = entry.slots.get(timeKey)!;
+   167→   167→      if (s.dayOfWeek !== null) {
+   168→   168→        if (!dayMap.has(s.dayOfWeek)) {
+   169→   169→          dayMap.set(s.dayOfWeek, []);
+   170→   170→        }
+   171→   171→        dayMap.get(s.dayOfWeek)!.push({
+   172→   172→          schedule: s,
+   173→   173→          priority: templatePriorityMap[s.taskTemplateId] ?? "LOW",
+   174→   174→        });
+   175→   175→      }
+   176→   176→    }
+   177→   177→
+   178→   178→    const allTimeSlots = new Set<string>();
+   179→   179→    for (const [, a] of assigneeMap) {
+   180→   180→      for (const key of a.slots.keys()) {
+   181→   181→        allTimeSlots.add(key);
+   182→   182→      }
+   183→   183→    }
+   184→   184→    const sortedTimeSlots = Array.from(allTimeSlots).sort((a, b) =>
+   185→   185→      a.localeCompare(b)
+   186→   186→    );
+   187→   187→
+   188→   188→    return { assigneeMap, sortedTimeSlots };
+   189→   189→  }, [schedules, templatePriorityMap]);
+   190→   190→
+   191→   191→  /* ---- Mutations ---- */
+   192→   192→  const deleteMutation = useMutation({
+   193→   193→    mutationFn: async (id: string) => {
+   194→   194→      const r = await fetch(`/api/schedules/${id}`, { method: "DELETE" });
+   195→   195→      if (!r.ok) throw new Error("خطا در حذف");
+   196→   196→      return r.json();
+   197→   197→    },
+   198→   198→    onSuccess: () => {
+   199→   199→      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+   200→   200→      toast.success("زمان‌بندی حذف شد.");
+   201→   201→      setDeleteOpen(false);
+   202→   202→      setTargetSchedule(null);
+   203→   203→    },
+   204→   204→    onError: () => {
+   205→   205→      toast.error("خطا در حذف زمان‌بندی.");
+   206→   206→    },
+   207→   207→  });
+   208→   208→
+   209→   209→  /* ---- Excel import ---- */
+   210→   210→  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+   211→   211→    const file = e.target.files?.[0];
+   212→   212→    if (!file) return;
+   213→   213→    const fd = new FormData();
+   214→   214→    fd.append("file", file);
+   215→   215→    try {
+   216→   216→      const r = await fetch("/api/import/excel", { method: "POST", body: fd });
+   217→   217→      if (r.ok) {
+   218→   218→        queryClient.invalidateQueries({ queryKey: ["schedules"] });
+   219→   219→        queryClient.invalidateQueries({ queryKey: ["templates"] });
+   220→   220→        toast.success("فایل اکسل با موفقیت وارد شد.");
+   221→   221→      } else {
+   222→   222→        const data = await r.json().catch(() => ({}));
+   223→   223→        toast.error(data.error ?? "خطا در وارد کردن فایل اکسل.");
+   224→   224→      }
+   225→   225→    } catch {
+   226→   226→      toast.error("خطا در ارسال فایل.");
+   227→   227→    }
+   228→   228→    if (fileInputRef.current) fileInputRef.current.value = "";
+   229→   229→  };
+   230→   230→
+   231→   231→  /* ---- Render ---- */
+   232→   232→  if (!groupId && groups.length === 0) {
+   233→   233→    return (
+   234→   234→      <div className="flex items-center justify-center h-full">
+   235→   235→        <div className="text-center space-y-3">
+   236→   236→          <Skeleton className="h-8 w-48 mx-auto" />
+   237→   237→          <Skeleton className="h-4 w-32 mx-auto" />
+   238→   238→        </div>
+   239→   239→      </div>
+   240→   240→    );
+   241→   241→  }
+   242→   242→
+   243→   243→  return (
+   244→   244→    <div className="h-full flex flex-col gap-4">
+   245→   245→      {/* ---- Header ---- */}
+   246→   246→      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+   247→   247→        <div className="flex items-center gap-2 flex-1 min-w-0">
+   248→   248→          <CalendarClock className="h-5 w-5 text-primary shrink-0" />
+   249→   249→          <h2 className="text-lg font-bold truncate">زمان‌بندی هفتگی</h2>
+   250→   250→        </div>
+   251→   251→
+   252→   252→        <div className="flex items-center gap-2 flex-wrap">
+   253→   253→          <Select value={groupId} onValueChange={setGroupId}>
+   254→   254→            <SelectTrigger className="w-40 gap-1.5" size="sm">
+   255→   255→              <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+   256→   256→              <SelectValue placeholder="انتخاب مجموعه" />
+   257→   257→            </SelectTrigger>
+   258→   258→            <SelectContent>
+   259→   259→              {groups.map((g) => (
+   260→   260→                <SelectItem key={g.id} value={g.id}>
+   261→   261→                  {g.name}
+   262→   262→                </SelectItem>
+   263→   263→              ))}
+   264→   264→            </SelectContent>
+   265→   265→          </Select>
+   266→   266→
+   267→   267→          <Button
+   268→   268→            size="sm"
+   269→   269→            onClick={() => setAddOpen(true)}
+   270→   270→            disabled={!groupId}
+   271→   271→            className="gap-1.5"
+   272→   272→          >
+   273→   273→            <Plus className="h-4 w-4" />
+   274→   274→            <span className="hidden sm:inline">افزودن</span>
+   275→   275→          </Button>
+   276→   276→
+   277→   277→          <Button
+   278→   278→            size="sm"
+   279→   279→            variant="outline"
+   280→   280→            onClick={() => fileInputRef.current?.click()}
+   281→   281→            disabled={!groupId}
+   282→   282→            className="gap-1.5"
+   283→   283→          >
+   284→   284→            <Upload className="h-4 w-4" />
+   285→   285→            <span className="hidden sm:inline">ورود از اکسل</span>
+   286→   286→          </Button>
+   287→   287→          <input
+   288→   288→            ref={fileInputRef}
+   289→   289→            type="file"
+   290→   290→            accept=".xlsx,.xls"
+   291→   291→            className="hidden"
+   292→   292→            onChange={handleExcelUpload}
+   293→   293→          />
+   294→   294→        </div>
+   295→   295→      </div>
+   296→   296→
+   297→   297→      {/* ---- Schedule Table ---- */}
+   298→   298→      <div className="flex-1 overflow-auto rounded-lg border bg-background">
+   299→   299→        {schedulesLoading ? (
+   300→   300→          <div className="p-6 space-y-4">
+   301→   301→            <Skeleton className="h-8 w-full" />
+   302→   302→            <Skeleton className="h-12 w-full" />
+   303→   303→            <Skeleton className="h-12 w-full" />
+   304→   304→            <Skeleton className="h-12 w-full" />
+   305→   305→          </div>
+   306→   306→        ) : !groupId ? (
+   307→   307→          <div className="p-8 text-center text-sm text-muted-foreground">
+   308→   308→            لطفاً یک مجموعه را انتخاب کنید.
+   309→   309→          </div>
+   310→   310→        ) : tableData.sortedTimeSlots.length === 0 ? (
+   311→   311→          <div className="p-8 text-center text-sm text-muted-foreground">
+   312→   312→            هیچ زمان‌بندی‌ای ثبت نشده است.
+   313→   313→          </div>
+   314→   314→        ) : (
+   315→   315→          <Table className="min-w-[800px]">
+   316→   316→            <TableHeader>
+   317→   317→              <TableRow className="bg-muted/40 hover:bg-muted/40">
+   318→   318→                <TableHead className="sticky right-0 z-10 bg-muted/40 min-w-[140px] text-right">
+   319→   319→                  <div className="flex items-center gap-1.5">
+   320→   320→                    <Users className="h-3.5 w-3.5" />
+   321→   321→                    نام تسک / مسئول
+   322→   322→                  </div>
+   323→   323→                </TableHead>
+   324→   324→                {PERSIAN_WEEK_DAYS.map((d) => (
+   325→   325→                  <TableHead key={d.key} className="text-center min-w-[120px]">
+   326→   326→                    {d.label}
+   327→   327→                  </TableHead>
+   328→   328→                ))}
+   329→   329→              </TableRow>
+   330→   330→            </TableHeader>
+   331→   331→            <TableBody>
+   332→   332→              {Array.from(tableData.assigneeMap.entries()).map(
+   333→   333→                ([aId, aData]) =>
+   334→   334→                  tableData.sortedTimeSlots.map((timeKey) => {
+   335→   335→                    const dayMap = aData.slots.get(timeKey);
+   336→   336→                    if (!dayMap || dayMap.size === 0) return null;
+   337→   337→                    const [startTime, endTime] = timeKey.split("-");
+   338→   338→                    const timeDisplay = `${toPersianDigits(startTime)}-${toPersianDigits(endTime)}`;
+   339→   339→
+   340→   340→                    return (
+   341→   341→                      <TableRow key={`${aId}-${timeKey}`}>
+   342→   342→                        <TableCell className="sticky right-0 z-10 bg-background border-l">
+   343→   343→                          <div className="font-medium text-sm truncate max-w-[140px]">
+   344→   344→                            {aData.name}
+   345→   345→                          </div>
+   346→   346→                          <div className="text-xs text-muted-foreground mt-0.5">
+   347→   347→                            {timeDisplay}
+   348→   348→                          </div>
+   349→   349→                        </TableCell>
+   350→   350→                        {PERSIAN_WEEK_DAYS.map((d) => {
+   351→   351→                          const items = dayMap.get(d.key) ?? [];
+   352→   352→                          return (
+   353→   353→                            <TableCell
+   354→   354→                              key={d.key}
+   355→   355→                              className="text-center align-top p-1.5"
+   356→   356→                            >
+   357→   357→                              {items.map(({ schedule: s, priority }) => {
+   358→   358→                                const badgeClass =
+   359→   359→                                  PRIORITY_BADGE[priority] ?? PRIORITY_BADGE.LOW;
+   360→   360→                                return (
+   361→   361→                                  <div
+   362→   362→                                    key={s.id}
+   363→   363→                                    className={cn(
+   364→   364→                                      "group relative rounded-md px-2 py-1.5 text-xs mb-1 cursor-pointer transition-colors border",
+   365→   365→                                      badgeClass
+   366→   366→                                    )}
+   367→   367→                                    onClick={() => {
+   368→   368→                                      setTargetSchedule(s);
+   369→   369→                                      setOverrideOpen(true);
+   370→   370→                                    }}
+   371→   371→                                  >
+   372→   372→                                    <div className="font-medium truncate">
+   373→   373→                                      {s.taskTemplateName}
+   374→   374→                                    </div>
+   375→   375→                                    <div className="opacity-80 mt-0.5">
+   376→   376→                                      {toPersianDigits(startTime)}-{toPersianDigits(endTime)}
+   377→   377→                                    </div>
+   378→   378→                                    {s.overrideAssigneeName && (
+   379→   379→                                      <div className="absolute -top-1 -left-1 bg-background border rounded-full p-0.5">
+   380→   380→                                        <UserPlus className="h-2.5 w-2.5 text-amber-500" />
+   381→   381→                                      </div>
+   382→   382→                                    )}
+   383→   383→                                    <button
+   384→   384→                                      className="absolute top-0.5 left-0.5 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded-full bg-background/80 hover:bg-rose-100 dark:hover:bg-rose-950/60"
+   385→   385→                                      onClick={(e) => {
+   386→   386→                                        e.stopPropagation();
+   387→   387→                                        setTargetSchedule(s);
+   388→   388→                                        setDeleteOpen(true);
+   389→   389→                                      }}
+   390→   390→                                    >
+   391→   391→                                      <Trash2 className="h-3 w-3 text-rose-500" />
+   392→   392→                                    </button>
+   393→   393→                                  </div>
+   394→   394→                                );
+   395→   395→                              })}
+   396→   396→                            </TableCell>
+   397→   397→                          );
+   398→   398→                        })}
+   399→   399→                      </TableRow>
+   400→   400→                    );
+   401→   401→                  })
+   402→   402→              )}
+   403→   403→            </TableBody>
+   404→   404→          </Table>
+   405→   405→        )}
+   406→   406→      </div>
+   407→   407→
+   408→   408→      {/* ---- Add Schedule Dialog ---- */}
+   409→   409→      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+   410→   410→        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+   411→   411→          <DialogHeader>
+   412→   412→            <DialogTitle>افزودن زمان‌بندی جدید</DialogTitle>
+   413→   413→            <DialogDescription>
+   414→   414→              یک قالب تسک را برای روزها و ساعات مشخص انتخاب کنید.
+   415→   415→            </DialogDescription>
+   416→   416→          </DialogHeader>
+   417→   417→          {/* Key forces remount on open — resets all form state */}
+   418→   418→          <AddScheduleForm
+   419→   419→            key={addOpen ? "open" : "closed"}
+   420→   420→            groupId={groupId}
+   421→   421→            templates={templates}
+   422→   422→            members={members}
+   423→   423→            onSuccess={() => setAddOpen(false)}
+   424→   424→          />
+   425→   425→        </DialogContent>
+   426→   426→      </Dialog>
+   427→   427→
+   428→   428→      {/* ---- Override Assignee Dialog ---- */}
+   429→   429→      <Dialog open={overrideOpen} onOpenChange={(open) => {
+   430→   430→        setOverrideOpen(open);
+   431→   431→        if (!open) setTargetSchedule(null);
+   432→   432→      }}>
+   433→   433→        <DialogContent className="sm:max-w-md">
+   434→   434→          {targetSchedule && (
+   435→   435→            <OverrideForm
+   436→   436→              key={overrideOpen ? "open" : "closed"}
+   437→   437→              schedule={targetSchedule}
+   438→   438→              members={members}
+   439→   439→              onSuccess={() => {
+   440→   440→                setOverrideOpen(false);
+   441→   441→                setTargetSchedule(null);
+   442→   442→              }}
+   443→   443→            />
+   444→   444→          )}
+   445→   445→        </DialogContent>
+   446→   446→      </Dialog>
+   447→   447→
+   448→   448→      {/* ---- Delete Confirmation ---- */}
+   449→   449→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+   450→   450→        <AlertDialogContent>
+   451→   451→          <AlertDialogHeader>
+   452→   452→            <AlertDialogTitle>حذف زمان‌بندی</AlertDialogTitle>
+   453→   453→            <AlertDialogDescription>
+   454→   454→              آیا از حذف این زمان‌بندی مطمئن هستید؟ این عمل قابل بازگشت نیست.
+   455→   455→            </AlertDialogDescription>
+   456→   456→          </AlertDialogHeader>
+   457→   457→          <AlertDialogFooter>
+   458→   458→            <AlertDialogCancel onClick={() => setTargetSchedule(null)}>
+   459→   459→              انصراف
+   460→   460→            </AlertDialogCancel>
+   461→   461→            <AlertDialogAction
+   462→   462→              className="bg-rose-600 hover:bg-rose-700"
+   463→   463→              onClick={() => {
+   464→   464→                if (targetSchedule) deleteMutation.mutate(targetSchedule.id);
+   465→   465→              }}
+   466→   466→              disabled={deleteMutation.isPending}
+   467→   467→            >
+   468→   468→              {deleteMutation.isPending ? "در حال حذف..." : "حذف"}
+   469→   469→            </AlertDialogAction>
+   470→   470→          </AlertDialogFooter>
+   471→   471→        </AlertDialogContent>
+   472→   472→      </AlertDialog>
+   473→   473→    </div>
+   474→   474→  );
+   475→   475→}
+   476→   476→
+   477→   477→/* ================================================================== */
+   478→   478→/*  Add Schedule Form (keyed — remounts on dialog open)                 */
+   479→   479→/* ================================================================== */
+   480→   480→
+   481→   481→interface AddScheduleFormProps {
+   482→   482→  groupId: string;
+   483→   483→  templates: SerializedTaskTemplate[];
+   484→   484→  members: SerializedMember[];
+   485→   485→  onSuccess: () => void;
+   486→   486→}
+   487→   487→
+   488→   488→function AddScheduleForm({
+   489→   489→  groupId,
+   490→   490→  templates,
+   491→   491→  members,
+   492→   492→  onSuccess,
+   493→   493→}: AddScheduleFormProps) {
+   494→   494→  const queryClient = useQueryClient();
+   495→   495→
+   496→   496→  const [templateId, setTemplateId] = React.useState("");
+   497→   497→  const [newTemplateName, setNewTemplateName] = React.useState("");
+   498→   498→  const [useNewTemplate, setUseNewTemplate] = React.useState(false);
+   499→   499→  const [priority, setPriority] = React.useState("MEDIUM");
+   500→   500→  const [selectedDays, setSelectedDays] = React.useState<number[]>([]);
+   501→   501→  const [specificDate, setSpecificDate] = React.useState("");
+   502→   502→  const [startTime, setStartTime] = React.useState("08:00");
+   503→   503→  const [endTime, setEndTime] = React.useState("10:00");
+   504→   504→  const [assigneeId, setAssigneeId] = React.useState("");
+   505→   505→  const [allDaysSamePerson, setAllDaysSamePerson] = React.useState(false);
+   506→   506→  const [submitting, setSubmitting] = React.useState(false);
+   507→   507→
+   508→   508→  const createMutation = useMutation({
+   509→   509→    mutationFn: async (body: Record<string, unknown>) => {
+   510→   510→      const r = await fetch("/api/schedules", {
+   511→   511→        method: "POST",
+   512→   512→        headers: { "Content-Type": "application/json" },
+   513→   513→        body: JSON.stringify(body),
+   514→   514→      });
+   515→   515→      if (!r.ok) {
+   516→   516→        const data = await r.json().catch(() => ({}));
+   517→   517→        throw new Error(data.error ?? "خطا در ایجاد زمان‌بندی");
+   518→   518→      }
+   519→   519→      return r.json();
+   520→   520→    },
+   521→   521→    onSuccess: () => {
+   522→   522→      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+   523→   523→      queryClient.invalidateQueries({ queryKey: ["templates"] });
+   524→   524→      toast.success("زمان‌بندی با موفقیت ایجاد شد.");
+   525→   525→      onSuccess();
+   526→   526→    },
+   527→   527→    onError: (err) => {
+   528→   528→      toast.error(err.message);
+   529→   529→    },
+   530→   530→  });
+   531→   531→
+   532→   532→  function handleSubmit() {
+   533→   533→    const templateName = useNewTemplate ? newTemplateName.trim() : "";
+   534→   534→    const tId = useNewTemplate ? undefined : templateId;
+   535→   535→
+   536→   536→    if (!useNewTemplate && !templateId) {
+   537→   537→      toast.error("لطفاً قالب تسک را انتخاب کنید.");
+   538→   538→      return;
+   539→   539→    }
+   540→   540→    if (useNewTemplate && !templateName) {
+   541→   541→      toast.error("لطفاً نام قالب تسک جدید را وارد کنید.");
+   542→   542→      return;
+   543→   543→    }
+   544→   544→    if (selectedDays.length === 0 && !specificDate) {
+   545→   545→      toast.error("لطفاً حداقل یک روز یا تاریخ خاص را انتخاب کنید.");
+   546→   546→      return;
+   547→   547→    }
+   548→   548→    if (!startTime || !endTime) {
+   549→   549→      toast.error("لطفاً ساعت شروع و پایان را وارد کنید.");
+   550→   550→      return;
+   551→   551→    }
+   552→   552→    if (!assigneeId) {
+   553→   553→      toast.error("لطفاً مسئول را انتخاب کنید.");
+   554→   554→      return;
+   555→   555→    }
+   556→   556→
+   557→   557→    setSubmitting(true);
+   558→   558→
+   559→   559→    createMutation.mutate(
+   560→   560→      {
+   561→   561→        groupId,
+   562→   562→        taskTemplateId: tId,
+   563→   563→        newTemplateName: templateName || undefined,
+   564→   564→        priority,
+   565→   565→        dayOfWeeks: selectedDays.length > 0 ? selectedDays : undefined,
+   566→   566→        specificDate: specificDate || undefined,
+   567→   567→        startTime,
+   568→   568→        endTime,
+   569→   569→        assigneeId,
+   570→   570→        allDaysSamePerson,
+   571→   571→      },
+   572→   572→      { onSettled: () => setSubmitting(false) }
+   573→   573→    );
+   574→   574→  }
+   575→   575→
+   576→   576→  const toggleDay = (day: number) => {
+   577→   577→    setSelectedDays((prev) =>
+   578→   578→      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+   579→   579→    );
+   580→   580→  };
+   581→   581→
+   582→   582→  return (
+   583→   583→    <>
+   584→   584→      <div className="space-y-4">
+   585→   585→        {/* Template selection */}
+   586→   586→        <div className="space-y-2">
+   587→   587→          <Label className="text-sm font-medium">قالب تسک</Label>
+   588→   588→          <div className="flex items-center gap-2">
+   589→   589→            <Checkbox
+   590→   590→              id="new-template-check"
+   591→   591→              checked={useNewTemplate}
+   592→   592→              onCheckedChange={(v) => setUseNewTemplate(!!v)}
+   593→   593→            />
+   594→   594→            <Label htmlFor="new-template-check" className="text-sm cursor-pointer">
+   595→   595→              قالب جدید
+   596→   596→            </Label>
+   597→   597→          </div>
+   598→   598→          {useNewTemplate ? (
+   599→   599→            <Input
+   600→   600→              placeholder="نام قالب تسک جدید..."
+   601→   601→              value={newTemplateName}
+   602→   602→              onChange={(e) => setNewTemplateName(e.target.value)}
+   603→   603→            />
+   604→   604→          ) : (
+   605→   605→            <Select value={templateId} onValueChange={setTemplateId}>
+   606→   606→              <SelectTrigger className="w-full">
+   607→   607→                <SelectValue placeholder="انتخاب قالب تسک" />
+   608→   608→              </SelectTrigger>
+   609→   609→              <SelectContent>
+   610→   610→                {templates.map((t) => (
+   611→   611→                  <SelectItem key={t.id} value={t.id}>
+   612→   612→                    {t.name}
+   613→   613→                  </SelectItem>
+   614→   614→                ))}
+   615→   615→              </SelectContent>
+   616→   616→            </Select>
+   617→   617→          )}
+   618→   618→        </div>
+   619→   619→
+   620→   620→        {/* Priority */}
+   621→   621→        {useNewTemplate && (
+   622→   622→          <div className="space-y-2">
+   623→   623→            <Label className="text-sm font-medium">اولویت</Label>
+   624→   624→            <Select value={priority} onValueChange={setPriority}>
+   625→   625→              <SelectTrigger className="w-full">
+   626→   626→                <SelectValue />
+   627→   627→              </SelectTrigger>
+   628→   628→              <SelectContent>
+   629→   629→                {PRIORITIES.map((p) => (
+   630→   630→                  <SelectItem key={p.key} value={p.key}>
+   631→   631→                    {p.label}
+   632→   632→                  </SelectItem>
+   633→   633→                ))}
+   634→   634→              </SelectContent>
+   635→   635→            </Select>
+   636→   636→          </div>
+   637→   637→        )}
+   638→   638→
+   639→   639→        {/* Day selection (multi-select) */}
+   640→   640→        <div className="space-y-2">
+   641→   641→          <Label className="text-sm font-medium">روزهای هفته</Label>
+   642→   642→          <div className="flex flex-wrap gap-2">
+   643→   643→            {PERSIAN_WEEK_DAYS.map((d) => {
+   644→   644→              const checked = selectedDays.includes(d.key);
+   645→   645→              return (
+   646→   646→                <button
+   647→   647→                  key={d.key}
+   648→   648→                  type="button"
+   649→   649→                  onClick={() => toggleDay(d.key)}
+   650→   650→                  className={cn(
+   651→   651→                    "rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
+   652→   652→                    checked
+   653→   653→                      ? "bg-primary text-primary-foreground border-primary"
+   654→   654→                      : "bg-background text-muted-foreground border-border hover:bg-muted"
+   655→   655→                  )}
+   656→   656→                >
+   657→   657→                  {d.label}
+   658→   658→                </button>
+   659→   659→              );
+   660→   660→            })}
+   661→   661→          </div>
+   662→   662→        </div>
+   663→   663→
+   664→   664→        {/* Or specific date */}
+   665→   665→        <div className="space-y-2">
+   666→   666→          <Label className="text-sm font-medium">یا تاریخ خاص</Label>
+   667→   667→          <Input
+   668→   668→            type="date"
+   669→   669→            value={specificDate}
+   670→   670→            onChange={(e) => setSpecificDate(e.target.value)}
+   671→   671→            dir="ltr"
+   672→   672→            className="w-full"
+   673→   673→          />
+   674→   674→        </div>
+   675→   675→
+   676→   676→        {/* Time range */}
+   677→   677→        <div className="grid grid-cols-2 gap-3">
+   678→   678→          <div className="space-y-2">
+   679→   679→            <Label className="text-sm font-medium">ساعت شروع</Label>
+   680→   680→            <Input
+   681→   681→              type="time"
+   682→   682→              value={startTime}
+   683→   683→              onChange={(e) => setStartTime(e.target.value)}
+   684→   684→              dir="ltr"
+   685→   685→            />
+   686→   686→          </div>
+   687→   687→          <div className="space-y-2">
+   688→   688→            <Label className="text-sm font-medium">ساعت پایان</Label>
+   689→   689→            <Input
+   690→   690→              type="time"
+   691→   691→              value={endTime}
+   692→   692→              onChange={(e) => setEndTime(e.target.value)}
+   693→   693→              dir="ltr"
+   694→   694→            />
+   695→   695→          </div>
+   696→   696→        </div>
+   697→   697→
+   698→   698→        {/* Assignee */}
+   699→   699→        <div className="space-y-2">
+   700→   700→          <Label className="text-sm font-medium">مسئول</Label>
+   701→   701→          <Select value={assigneeId} onValueChange={setAssigneeId}>
+   702→   702→            <SelectTrigger className="w-full">
+   703→   703→              <SelectValue placeholder="انتخاب مسئول" />
+   704→   704→            </SelectTrigger>
+   705→   705→            <SelectContent>
+   706→   706→              {members.map((m) => (
+   707→   707→                <SelectItem key={m.id} value={m.id}>
+   708→   708→                  {m.name}
+   709→   709→                </SelectItem>
+   710→   710→              ))}
+   711→   711→            </SelectContent>
+   712→   712→          </Select>
+   713→   713→        </div>
+   714→   714→
+   715→   715→        {/* All days same person */}
+   716→   716→        <div className="flex items-center gap-2">
+   717→   717→          <Checkbox
+   718→   718→            id="all-days-check"
+   719→   719→            checked={allDaysSamePerson}
+   720→   720→            onCheckedChange={(v) => setAllDaysSamePerson(!!v)}
+   721→   721→          />
+   722→   722→          <Label htmlFor="all-days-check" className="text-sm cursor-pointer">
+   723→   723→            همه روزها به همین شخص
+   724→   724→          </Label>
+   725→   725→        </div>
+   726→   726→      </div>
+   727→   727→
+   728→   728→      <DialogFooter>
+   729→   729→        <Button variant="outline" onClick={onSuccess}>
+   730→   730→          انصراف
+   731→   731→        </Button>
+   732→   732→        <Button onClick={handleSubmit} disabled={submitting}>
+   733→   733→          {submitting ? "در حال ثبت..." : "ثبت زمان‌بندی"}
+   734→   734→        </Button>
+   735→   735→      </DialogFooter>
+   736→   736→    </>
+   737→   737→  );
+   738→   738→}
+   739→   739→
+   740→   740→/* ================================================================== */
+   741→   741→/*  Override Assignee Form (keyed — remounts on dialog open)            */
+   742→   742→/* ================================================================== */
+   743→   743→
+   744→   744→interface OverrideFormProps {
+   745→   745→  schedule: SerializedSchedule;
+   746→   746→  members: SerializedMember[];
+   747→   747→  onSuccess: () => void;
+   748→   748→}
+   749→   749→
+   750→   750→function OverrideForm({ schedule, members, onSuccess }: OverrideFormProps) {
+   751→   751→  const queryClient = useQueryClient();
+   752→   752→  const [overrideId, setOverrideId] = React.useState("");
+   753→   753→  const [overrideDate, setOverrideDate] = React.useState(
+   754→   754→    schedule.overrideDate ?? ""
+   755→   755→  );
+   756→   756→  const [submitting, setSubmitting] = React.useState(false);
+   757→   757→
+   758→   758→  const overrideMutation = useMutation({
+   759→   759→    mutationFn: async ({
+   760→   760→      id,
+   761→   761→      body,
+   762→   762→    }: {
+   763→   763→      id: string;
+   764→   764→      body: Record<string, unknown>;
+   765→   765→    }) => {
+   766→   766→      const r = await fetch(`/api/schedules/${id}`, {
+   767→   767→        method: "PATCH",
+   768→   768→        headers: { "Content-Type": "application/json" },
+   769→   769→        body: JSON.stringify(body),
+   770→   770→      });
+   771→   771→      if (!r.ok) {
+   772→   772→        const data = await r.json().catch(() => ({}));
+   773→   773→        throw new Error(data.error ?? "خطا در تغییر مسئول");
+   774→   774→      }
+   775→   775→      return r.json();
+   776→   776→    },
+   777→   777→    onSuccess: () => {
+   778→   778→      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+   779→   779→      toast.success("مسئول تغییر کرد.");
+   780→   780→      onSuccess();
+   781→   781→    },
+   782→   782→    onError: (err) => {
+   783→   783→      toast.error(err.message);
+   784→   784→    },
+   785→   785→  });
+   786→   786→
+   787→   787→  function handleOverride() {
+   788→   788→    if (!overrideId) {
+   789→   789→      toast.error("لطفاً مسئول جدید را انتخاب کنید.");
+   790→   790→      return;
+   791→   791→    }
+   792→   792→    setSubmitting(true);
+   793→   793→    overrideMutation.mutate(
+   794→   794→      {
+   795→   795→        id: schedule.id,
+   796→   796→        body: {
+   797→   797→          overrideAssigneeId: overrideId,
+   798→   798→          overrideDate: overrideDate || undefined,
+   799→   799→        },
+   800→   800→      },
+   801→   801→      { onSettled: () => setSubmitting(false) }
+   802→   802→    );
+   803→   803→  }
+   804→   804→
+   805→   805→  return (
+   806→   806→    <>
+   807→   807→      <DialogHeader>
+   808→   808→        <DialogTitle>تغییر مسئول</DialogTitle>
+   809→   809→        <DialogDescription>
+   810→   810→          مسئول را برای این زمان‌بندی تغییر دهید.
+   811→   811→        </DialogDescription>
+   812→   812→      </DialogHeader>
+   813→   813→
+   814→   814→      <div className="space-y-4">
+   815→   815→        <div className="rounded-md bg-muted/60 p-3 space-y-1">
+   816→   816→          <div className="text-sm font-medium">{schedule.taskTemplateName}</div>
+   817→   817→          <div className="text-xs text-muted-foreground">
+   818→   818→            {schedule.dayOfWeekLabel && `روز: ${schedule.dayOfWeekLabel}`}
+   819→   819→            {schedule.startTime && (
+   820→   820→              <span>
+   821→   821→                {" "}
+   822→   822→                | ساعت: {toPersianDigits(schedule.startTime)}-
+   823→   823→                {toPersianDigits(schedule.endTime)}
+   824→   824→              </span>
+   825→   825→            )}
+   826→   826→          </div>
+   827→   827→          <div className="text-xs text-muted-foreground">
+   828→   828→            مسئول فعلی: {schedule.assigneeName}
+   829→   829→            {schedule.overrideAssigneeName && (
+   830→   830→              <span className="text-amber-600">
+   831→   831→                {" "}
+   832→   832→                → {schedule.overrideAssigneeName}
+   833→   833→              </span>
+   834→   834→            )}
+   835→   835→          </div>
+   836→   836→        </div>
+   837→   837→
+   838→   838→        <div className="space-y-2">
+   839→   839→          <Label className="text-sm font-medium">مسئول جدید</Label>
+   840→   840→          <Select value={overrideId} onValueChange={setOverrideId}>
+   841→   841→            <SelectTrigger className="w-full">
+   842→   842→              <SelectValue placeholder="انتخاب مسئول جدید" />
+   843→   843→            </SelectTrigger>
+   844→   844→            <SelectContent>
+   845→   845→              {members
+   846→   846→                .filter((m) => m.id !== schedule.assigneeId)
+   847→   847→                .map((m) => (
+   848→   848→                  <SelectItem key={m.id} value={m.id}>
+   849→   849→                    {m.name}
+   850→   850→                  </SelectItem>
+   851→   851→                ))}
+   852→   852→            </SelectContent>
+   853→   853→          </Select>
+   854→   854→        </div>
+   855→   855→
+   856→   856→        <div className="space-y-2">
+   857→   857→          <Label className="text-sm font-medium">
+   858→   858→            تاریخ اعمال تغییر (اختیاری)
+   859→   859→          </Label>
+   860→   860→          <Input
+   861→   861→            type="date"
+   862→   862→            value={overrideDate}
+   863→   863→            onChange={(e) => setOverrideDate(e.target.value)}
+   864→   864→            dir="ltr"
+   865→   865→          />
+   866→   866→        </div>
+   867→   867→      </div>
+   868→   868→
+   869→   869→      <DialogFooter>
+   870→   870→        <Button variant="outline" onClick={onSuccess}>
+   871→   871→          انصراف
+   872→   872→        </Button>
+   873→   873→        <Button onClick={handleOverride} disabled={submitting}>
+   874→   874→          {submitting ? "در حال ثبت..." : "اعمال تغییر"}
+   875→   875→        </Button>
+   876→   876→      </DialogFooter>
+   877→   877→    </>
+   878→   878→  );
+   879→   879→}
