@@ -78,6 +78,9 @@ import {
   History,
   MessageSquare,
   FileArchive,
+  Users,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -183,6 +186,10 @@ export function TaskListView() {
   const [priorityFilter, setPriorityFilter] = React.useState<string>("all");
   const [sourceFilter, setSourceFilter] = React.useState<string>("all");
   const [groupFilter, setGroupFilter] = React.useState<string>("all");
+  const [assigneeFilter, setAssigneeFilter] = React.useState<string>("all");
+  const [dateFrom, setDateFrom] = React.useState("");
+  const [dateTo, setDateTo] = React.useState("");
+  const [groupByPerson, setGroupByPerson] = React.useState(false);
 
   // Detail sheet
   const [detailTask, setDetailTask] = React.useState<SerializedTask | null>(null);
@@ -228,9 +235,12 @@ export function TaskListView() {
     if (priorityFilter !== "all") params.set("priority", priorityFilter);
     if (sourceFilter !== "all") params.set("source", sourceFilter);
     if (groupFilter !== "all") params.set("groupId", groupFilter);
+    if (assigneeFilter !== "all") params.set("assigneeId", assigneeFilter);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
     const qs = params.toString();
     return qs ? `?${qs}` : "";
-  }, [statusFilter, priorityFilter, sourceFilter, groupFilter]);
+  }, [statusFilter, priorityFilter, sourceFilter, groupFilter, assigneeFilter, dateFrom, dateTo]);
 
   // Fetch tasks
   const { data: tasksData, isLoading } = useQuery({
@@ -241,6 +251,9 @@ export function TaskListView() {
       priorityFilter,
       sourceFilter,
       groupFilter,
+      assigneeFilter,
+      dateFrom,
+      dateTo,
     ],
     queryFn: async () => {
       const r = await fetch(`/api/tasks${queryParams}`);
@@ -277,6 +290,31 @@ export function TaskListView() {
     });
     return { ids: Array.from(set), names: map };
   }, [tasks]);
+
+  // Derive unique assignees from fetched tasks
+  const uniqueAssignees = React.useMemo(() => {
+    const map = new Map<string, string>();
+    tasks.forEach((t) => {
+      if (t.assigneeId && t.assigneeName && !map.has(t.assigneeId)) {
+        map.set(t.assigneeId, t.assigneeName);
+      }
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [tasks]);
+
+  // Group tasks by assignee for per-person view
+  const tasksByPerson = React.useMemo(() => {
+    const grouped = new Map<string, { name: string; tasks: typeof filteredTasks }>();
+    for (const t of filteredTasks) {
+      if (!grouped.has(t.assigneeId)) {
+        grouped.set(t.assigneeId, { name: t.assigneeName, tasks: [] });
+      }
+      grouped.get(t.assigneeId)!.tasks.push(t);
+    }
+    return Array.from(grouped.entries()).sort((a, b) =>
+      a[1].name.localeCompare(b[1].name)
+    );
+  }, [filteredTasks]);
 
   function openDetail(task: SerializedTask) {
     setDetailTask(task);
@@ -315,6 +353,21 @@ export function TaskListView() {
                 {Array.from(uniqueGroups.names.entries()).map(([id, name]) => (
                   <SelectItem key={id} value={id}>
                     {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Assignee (نفر) */}
+            <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+              <SelectTrigger className="w-auto min-w-[110px] h-9 text-xs">
+                <SelectValue placeholder="مسئول" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">همه افراد</SelectItem>
+                {uniqueAssignees.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -364,11 +417,57 @@ export function TaskListView() {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Date from */}
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-[140px] h-9 text-xs"
+              dir="ltr"
+              placeholder="از تاریخ"
+            />
+
+            {/* Date to */}
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-[140px] h-9 text-xs"
+              dir="ltr"
+              placeholder="تا تاریخ"
+            />
+
+            {/* Clear date filter */}
+            {(dateFrom || dateTo) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-9 text-xs text-muted-foreground hover:text-foreground px-2"
+                onClick={() => { setDateFrom(""); setDateTo(""); }}
+                title="پاک کردن فیلتر تاریخ"
+              >
+                <CalendarClock className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
 
-          {/* Count */}
-          <div className="text-xs text-muted-foreground whitespace-nowrap hidden sm:block">
-            {toPersianDigits(filteredTasks.length)} تسک
+          {/* Count + Group-by toggle */}
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              variant={groupByPerson ? "default" : "outline"}
+              className={cn("gap-1.5 h-9 text-xs", groupByPerson && "bg-primary")}
+              onClick={() => setGroupByPerson(!groupByPerson)}
+              title="نمایش به تفکیک نفر"
+            >
+              <Users className="h-3.5 w-3.5" />
+              <span className="hidden md:inline">تفکیک نفر</span>
+            </Button>
+
+            <div className="text-xs text-muted-foreground whitespace-nowrap hidden sm:block">
+              {toPersianDigits(filteredTasks.length)} تسک
+            </div>
           </div>
 
           {/* Excel actions */}
@@ -421,7 +520,118 @@ export function TaskListView() {
               </p>
             </div>
           </div>
+        ) : groupByPerson ? (
+          /* ---- Grouped by Person ---- */
+          <ScrollArea className="h-full">
+            <div className="divide-y">
+              {tasksByPerson.map(([assigneeId, group]) => {
+                const doneCount = group.tasks.filter((t) => t.status === "DONE").length;
+                const total = group.tasks.length;
+                return (
+                  <div key={assigneeId} className="py-2">
+                    {/* Person header row */}
+                    <button
+                      className="flex items-center gap-2 w-full px-4 py-2 hover:bg-muted/50 transition-colors text-right"
+                      onClick={() => {
+                        const el = document.getElementById(`person-${assigneeId}`);
+                        el?.classList.toggle("hidden");
+                        const chevron = document.getElementById(`chevron-${assigneeId}`);
+                        chevron?.classList.toggle("rotate-90");
+                      }}
+                    >
+                      <ChevronRight
+                        id={`chevron-${assigneeId}`}
+                        className="h-4 w-4 text-muted-foreground transition-transform rotate-90 shrink-0"
+                      />
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold shrink-0">
+                        {group.name.charAt(0)}
+                      </span>
+                      <span className="text-sm font-semibold">{group.name}</span>
+                      <Badge variant="outline" className="text-[10px] mr-auto">
+                        {toPersianDigits(total)} تسک | {toPersianDigits(doneCount)} انجام‌شده
+                      </Badge>
+                    </button>
+
+                    {/* Person's task table */}
+                    <div id={`person-${assigneeId}`} className="px-4 pb-2">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs whitespace-nowrap w-[90px]">کد</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap min-w-[160px]">عنوان</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap hidden md:table-cell">مجموعه</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap hidden lg:table-cell">اولویت</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap">وضعیت</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap hidden xl:table-cell">ددلاین</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap w-16 text-center">عملیات</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {group.tasks.map((task) => {
+                            const overdue = isOverdue(new Date(task.deadline), task.status);
+                            return (
+                              <TableRow key={task.id} className="group">
+                                <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+                                  {task.code}
+                                </TableCell>
+                                <TableCell
+                                  className="text-sm font-medium max-w-[200px] sm:max-w-[280px] cursor-pointer truncate"
+                                  onClick={() => openDetail(task)}
+                                >
+                                  <span className="hover:text-primary transition-colors">
+                                    {task.title}
+                                  </span>
+                                  {overdue && (
+                                    <span className="inline-flex items-center gap-0.5 mr-1.5 text-[10px] text-rose-600 dark:text-rose-400">
+                                      <AlertTriangle className="h-2.5 w-2.5" />
+                                    </span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground hidden md:table-cell whitespace-nowrap">
+                                  {task.groupName}
+                                </TableCell>
+                                <TableCell className="hidden lg:table-cell">
+                                  <PriorityBadge priority={task.priority} />
+                                </TableCell>
+                                <TableCell>
+                                  <StatusBadge status={task.status} />
+                                </TableCell>
+                                <TableCell className="hidden xl:table-cell whitespace-nowrap">
+                                  <span
+                                    className={cn(
+                                      "text-xs",
+                                      overdue
+                                        ? "text-rose-600 dark:text-rose-400 font-medium"
+                                        : "text-muted-foreground"
+                                    )}
+                                  >
+                                    {formatJalaliDate(new Date(task.deadline))}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => openDetail(task)}
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <ScrollBar orientation="vertical" />
+          </ScrollArea>
         ) : (
+          /* ---- Normal flat table ---- */
           <ScrollArea className="h-full">
             <Table>
               <TableHeader>

@@ -4,7 +4,7 @@ import { serializeTask } from "@/lib/serialize";
 import { getCurrentMember, getVisibleMemberIds, canManage, isManagerOfGroup } from "@/lib/auth";
 import { STATUSES, PRIORITIES } from "@/lib/constants";
 
-// GET /api/tasks?status=&groupId=&priority=&source=&overdue=1
+// GET /api/tasks?status=&groupId=&priority=&source=&overdue=1&dateFrom=&dateTo=&assigneeId=
 export async function GET(req: NextRequest) {
   try {
     const me = await getCurrentMember();
@@ -18,6 +18,9 @@ export async function GET(req: NextRequest) {
     const priority = searchParams.get("priority");
     const source = searchParams.get("source");
     const overdue = searchParams.get("overdue") === "1";
+    const dateFrom = searchParams.get("dateFrom");
+    const dateTo = searchParams.get("dateTo");
+    const assigneeId = searchParams.get("assigneeId");
 
     // Role-based visibility
     const visibleIds = await getVisibleMemberIds(me);
@@ -26,13 +29,19 @@ export async function GET(req: NextRequest) {
       assigneeId: { in: visibleIds },
     };
 
-    // MANAGER sees tasks of group members (already handled by getVisibleMemberIds)
-    // SUPER_ADMIN sees all (already handled by getVisibleMemberIds)
-
     if (status) where.status = status;
     if (groupId) where.groupId = groupId;
     if (priority) where.priority = priority;
     if (source) where.source = source;
+    if (assigneeId) where.assigneeId = assigneeId;
+
+    // Date range filter on deadline
+    if (dateFrom || dateTo) {
+      const dateFilter: Record<string, unknown> = {};
+      if (dateFrom) dateFilter.gte = new Date(dateFrom);
+      if (dateTo) dateFilter.lte = new Date(dateTo);
+      where.deadline = dateFilter;
+    }
 
     const tasks = await db.task.findMany({
       where,
