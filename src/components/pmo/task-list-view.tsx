@@ -811,55 +811,55 @@ export function TaskListView() {
             <ScrollBar orientation="horizontal" />
             <ScrollBar orientation="vertical" />
           </ScrollArea>
+        )}
 
-          {/* Pagination */}
-          {pagination && pagination.totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 py-2 border-t">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 w-8 p-0"
-                disabled={page <= 1}
-                onClick={() => setPage(1)}
-                title="اولین صفحه"
-              >
-                <ChevronsRight className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 w-8 p-0"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-                title="صفحه قبل"
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-              <span className="text-xs text-muted-foreground min-w-[100px] text-center">
-                {toPersianDigits(page)} از {toPersianDigits(pagination.totalPages)}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 w-8 p-0"
-                disabled={page >= pagination.totalPages}
-                onClick={() => setPage((p) => p + 1)}
-                title="صفحه بعد"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 w-8 p-0"
-                disabled={page >= pagination.totalPages}
-                onClick={() => setPage(pagination.totalPages)}
-                title="آخرین صفحه"
-              >
-                <ChevronsLeft className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
+        {/* Pagination */}
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 py-2 border-t">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 p-0"
+              disabled={page <= 1}
+              onClick={() => setPage(1)}
+              title="اولین صفحه"
+            >
+              <ChevronsRight className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 p-0"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+              title="صفحه قبل"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+            <span className="text-xs text-muted-foreground min-w-[100px] text-center">
+              {toPersianDigits(page)} از {toPersianDigits(pagination.totalPages)}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 p-0"
+              disabled={page >= pagination.totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              title="صفحه بعد"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 p-0"
+              disabled={page >= pagination.totalPages}
+              onClick={() => setPage(pagination.totalPages)}
+              title="آخرین صفحه"
+            >
+              <ChevronsLeft className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         )}
       </Card>
 
