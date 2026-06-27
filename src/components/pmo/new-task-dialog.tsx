@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { useTMStore } from "@/lib/pmo-store";
 import { PRIORITIES, priorityByKey } from "@/lib/constants";
+import { JalaliDatePicker } from "@/components/jalali-date-picker";
 import type { SerializedMember, SerializedGroup } from "@/lib/serialize";
 import { toast } from "sonner";
 import {
@@ -59,7 +60,8 @@ export function NewTaskDialog({ open, onOpenChange, onCreated }: Props) {
   const [rawGroupId, setRawGroupId] = React.useState<string>(member?.groupId ?? "");
   const [assigneeId, setAssigneeId] = React.useState<string>("");
   const [priority, setPriority] = React.useState<string>("MEDIUM");
-  const [deadline, setDeadline] = React.useState("");
+  const [deadlineDate, setDeadlineDate] = React.useState("");
+  const [deadlineTime, setDeadlineTime] = React.useState("");
   const [source, setSource] = React.useState<"MANUAL" | "REFERRED">("MANUAL");
   const [letterNumber, setLetterNumber] = React.useState("");
   const [letterDate, setLetterDate] = React.useState("");
@@ -152,7 +154,7 @@ export function NewTaskDialog({ open, onOpenChange, onCreated }: Props) {
       toast.error("مسئول تسک الزامی است.");
       return;
     }
-    if (!deadline) {
+    if (!deadlineDate) {
       toast.error("مهلت تسک الزامی است.");
       return;
     }
@@ -173,7 +175,7 @@ export function NewTaskDialog({ open, onOpenChange, onCreated }: Props) {
         groupId,
         assigneeId,
         priority,
-        deadline: new Date(deadline).toISOString(),
+        deadline: new Date(`${deadlineDate}T${deadlineTime || "23:59"}:00`).toISOString(),
         source,
       };
 
@@ -301,18 +303,26 @@ export function NewTaskDialog({ open, onOpenChange, onCreated }: Props) {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="t-deadline" className="flex items-center gap-1.5">
+              <Label className="flex items-center gap-1.5">
                 <CalendarClock className="h-3.5 w-3.5" />
                 مهلت *
               </Label>
-              <Input
-                id="t-deadline"
-                type="datetime-local"
-                value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
-                dir="ltr"
-                className="text-left"
-              />
+              <div className="flex flex-col gap-1.5">
+                <JalaliDatePicker
+                  value={deadlineDate}
+                  onChange={setDeadlineDate}
+                  placeholder="انتخاب تاریخ مهلت"
+                  size="sm"
+                />
+                <Input
+                  type="time"
+                  value={deadlineTime}
+                  onChange={(e) => setDeadlineTime(e.target.value)}
+                  placeholder="ساعت"
+                  dir="ltr"
+                  className="text-xs h-8"
+                />
+              </div>
             </div>
           </div>
 
@@ -366,14 +376,12 @@ export function NewTaskDialog({ open, onOpenChange, onCreated }: Props) {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="t-letter-date">تاریخ نامه *</Label>
-                  <Input
-                    id="t-letter-date"
-                    type="date"
+                  <Label>تاریخ نامه *</Label>
+                  <JalaliDatePicker
                     value={letterDate}
-                    onChange={(e) => setLetterDate(e.target.value)}
-                    dir="ltr"
-                    className="text-left"
+                    onChange={setLetterDate}
+                    placeholder="تاریخ نامه"
+                    size="sm"
                   />
                 </div>
               </div>

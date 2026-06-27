@@ -60,6 +60,7 @@ import {
   toJalali,
 } from "@/lib/jalali";
 import { cn } from "@/lib/utils";
+import { JalaliDatePicker } from "@/components/jalali-date-picker";
 import { toast } from "sonner";
 import {
   CheckCircle2,
@@ -1121,12 +1122,11 @@ function TaskDetailSheet({
 
                   <div className="space-y-2">
                     <label className="text-xs text-muted-foreground">ددلاین</label>
-                    <Input
-                      type="date"
+                    <JalaliDatePicker
                       value={editDeadline}
-                      onChange={(e) => setEditDeadline(e.target.value)}
-                      className="h-9 text-xs"
-                      dir="ltr"
+                      onChange={setEditDeadline}
+                      placeholder="انتخاب ددلاین"
+                      size="sm"
                     />
                   </div>
                 </div>
