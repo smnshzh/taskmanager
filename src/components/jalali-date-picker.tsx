@@ -2,27 +2,16 @@
 
 import * as React from "react";
 import { DatePicker } from "noa-jalali-datepicker";
-import { toJalali, toGregorian, toPersianDigits, JALALI_MONTHS } from "@/lib/jalali";
+import { toGregorian } from "@/lib/jalali";
 import "noa-jalali-datepicker/dist/index.css";
 
 /* ------------------------------------------------------------------ */
-/*  Gregorian ↔ Jalali "YYYY/MM/DD" conversion helpers                */
+/*  Jalali "1403/10/25" → Gregorian ISO "2025-01-15"                   */
 /* ------------------------------------------------------------------ */
 
-/** Gregorian ISO "2025-01-15" or "2025-01-15T10:30:00Z" → Jalali "1403/10/25" */
-function gregorianToJalaliStr(gregorian: string | null | undefined): string | null {
-  if (!gregorian) return null;
-  const d = new Date(gregorian);
-  if (isNaN(d.getTime())) return null;
-  const [jy, jm, jd] = toJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
-  return `${jy}/${String(jm).padStart(2, "0")}/${String(jd).padStart(2, "0")}`;
-}
-
-/** Jalali "1403/10/25" → Gregorian ISO "2025-01-15T00:00:00.000Z" */
 function jalaliStrToGregorian(jalali: string): string {
   const [jy, jm, jd] = jalali.split("/").map(Number);
   const [gy, gm, gd] = toGregorian(jy, jm, jd);
-  // Return YYYY-MM-DD for date-only fields
   return `${gy}-${String(gm).padStart(2, "0")}-${String(gd).padStart(2, "0")}`;
 }
 
@@ -50,6 +39,13 @@ interface JalaliDatePickerProps {
 /**
  * Wrapper around noa-jalali-datepicker that handles
  * Gregorian ↔ Jalali conversion transparently.
+ *
+ * The underlying component uses moment-jalaali internally.
+ * It can parse Gregorian ISO strings correctly, but NOT bare
+ * Jalali strings like "1405/04/10".  So we pass the raw
+ * Gregorian value through — moment-jalaali converts it for
+ * display automatically.  On selection we convert the returned
+ * Jalali string back to Gregorian for the caller.
  */
 export function JalaliDatePicker({
   value,
@@ -60,8 +56,9 @@ export function JalaliDatePicker({
   className,
   inputClassName,
 }: JalaliDatePickerProps) {
-  // Convert incoming Gregorian value to Jalali string for the picker
-  const jalaliValue = React.useMemo(() => gregorianToJalaliStr(value), [value]);
+  // Pass the Gregorian ISO string directly — moment-jalaali will
+  // display it as Jalali.  Only convert empty → null.
+  const pickerValue = value ? value.slice(0, 10) : null;
 
   function handleChange(jalaliDate: string) {
     const gregorian = jalaliStrToGregorian(jalaliDate);
@@ -71,7 +68,7 @@ export function JalaliDatePicker({
   return (
     <div className={`relative ${className ?? ""}`}>
       <style>{`
-        /* Dark mode overrides for the datepicker */
+        /* Dark mode overrides */
         .dark .datepicker-popup {
           background-color: hsl(var(--popover)) !important;
           border-color: hsl(var(--border)) !important;
@@ -100,7 +97,7 @@ export function JalaliDatePicker({
           border-color: hsl(var(--border)) !important;
           color: hsl(var(--popover-foreground)) !important;
         }
-        /* Light mode border/bg fixes */
+        /* Shared overrides */
         .datepicker-input {
           background-color: transparent !important;
           border-color: hsl(var(--border)) !important;
@@ -143,7 +140,7 @@ export function JalaliDatePicker({
         }
       `}</style>
       <DatePicker
-        value={jalaliValue}
+        value={pickerValue}
         onChange={handleChange}
         placeholderText={placeholder}
         size={size}
