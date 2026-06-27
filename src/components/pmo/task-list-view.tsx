@@ -57,6 +57,7 @@ import {
   formatJalaliLong,
   formatTime,
   daysBetween,
+  toJalali,
 } from "@/lib/jalali";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -84,6 +85,10 @@ import {
   Pencil,
   Save,
   X,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronsLeftRight,
+  Columns3,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -194,6 +199,30 @@ export function TaskListView() {
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
   const [groupByPerson, setGroupByPerson] = React.useState(false);
+  const [page, setPage] = React.useState(1);
+  const PAGE_SIZE = 12;
+
+  // Column visibility
+  type ColKey = "code" | "title" | "group" | "assignee" | "priority" | "source" | "status" | "deadline" | "actions";
+  const defaultCols: Record<ColKey, boolean> = {
+    code: true, title: true, group: true, assignee: true,
+    priority: true, source: true, status: true, deadline: true, actions: true,
+  };
+  const [visibleCols, setVisibleCols] = React.useState<Record<ColKey, boolean>>(defaultCols);
+  const [colMenuOpen, setColMenuOpen] = React.useState(false);
+
+  // Close column menu on outside click
+  const colMenuRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!colMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (colMenuRef.current && !colMenuRef.current.contains(e.target as Node)) {
+        setColMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [colMenuOpen]);
 
   // Detail sheet
   const [detailTask, setDetailTask] = React.useState<SerializedTask | null>(null);
@@ -232,6 +261,9 @@ export function TaskListView() {
     }
   };
 
+  // Reset page when filters change
+  React.useEffect(() => { setPage(1); }, [statusFilter, priorityFilter, sourceFilter, groupFilter, assigneeFilter, dateFrom, dateTo]);
+
   // Build query params
   const queryParams = React.useMemo(() => {
     const params = new URLSearchParams();
@@ -242,9 +274,11 @@ export function TaskListView() {
     if (assigneeFilter !== "all") params.set("assigneeId", assigneeFilter);
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
+    params.set("page", String(page));
+    params.set("limit", String(PAGE_SIZE));
     const qs = params.toString();
     return qs ? `?${qs}` : "";
-  }, [statusFilter, priorityFilter, sourceFilter, groupFilter, assigneeFilter, dateFrom, dateTo]);
+  }, [statusFilter, priorityFilter, sourceFilter, groupFilter, assigneeFilter, dateFrom, dateTo, page]);
 
   // Fetch tasks
   const { data: tasksData, isLoading } = useQuery({
@@ -258,14 +292,16 @@ export function TaskListView() {
       assigneeFilter,
       dateFrom,
       dateTo,
+      page,
     ],
     queryFn: async () => {
       const r = await fetch(`/api/tasks${queryParams}`);
-      if (!r.ok) return { tasks: [] as SerializedTask[] };
-      return (await r.json()) as { tasks: SerializedTask[] };
+      if (!r.ok) return { tasks: [] as SerializedTask[], pagination: { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 } };
+      return (await r.json()) as { tasks: SerializedTask[]; pagination: { page: number; limit: number; total: number; totalPages: number } };
     },
   });
   const tasks = tasksData?.tasks ?? [];
+  const pagination = tasksData?.pagination;
 
   // Client-side search
   const filteredTasks = React.useMemo(() => {
@@ -422,24 +458,24 @@ export function TaskListView() {
               </SelectContent>
             </Select>
 
-            {/* Date from */}
+            {/* Date from (Jalali) */}
             <Input
-              type="date"
+              type="text"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="w-[140px] h-9 text-xs"
+              className="w-[130px] h-9 text-xs"
               dir="ltr"
-              placeholder="از تاریخ"
+              placeholder="1404/01/01"
             />
 
-            {/* Date to */}
+            {/* Date to (Jalali) */}
             <Input
-              type="date"
+              type="text"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="w-[140px] h-9 text-xs"
+              className="w-[130px] h-9 text-xs"
               dir="ltr"
-              placeholder="تا تاریخ"
+              placeholder="1404/12/29"
             />
 
             {/* Clear date filter */}
@@ -456,8 +492,43 @@ export function TaskListView() {
             )}
           </div>
 
-          {/* Count + Group-by toggle */}
+          {/* Count + Group-by toggle + Column toggle */}
           <div className="flex items-center gap-2 shrink-0">
+            {/* Column visibility dropdown */}
+            <div className="relative" ref={colMenuRef}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 h-9 text-xs"
+                onClick={() => setColMenuOpen(!colMenuOpen)}
+                title="ستون‌ها"
+              >
+                <Columns3 className="h-3.5 w-3.5" />
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+              {colMenuOpen && (
+                <div className="absolute top-full mt-1 right-0 z-50 bg-popover border rounded-lg shadow-md p-2 min-w-[160px]">
+                  {(["code", "title", "group", "assignee", "priority", "source", "status", "deadline"] as ColKey[]).map((col) => {
+                    const labels: Record<string, string> = {
+                      code: "کد", title: "عنوان", group: "مجموعه", assignee: "مسئول",
+                      priority: "اولویت", source: "منبع", status: "وضعیت", deadline: "ددلاین",
+                    };
+                    return (
+                      <label key={col} className="flex items-center gap-2 px-2 py-1.5 text-xs cursor-pointer hover:bg-muted/50 rounded">
+                        <input
+                          type="checkbox"
+                          checked={visibleCols[col]}
+                          onChange={(e) => setVisibleCols((prev) => ({ ...prev, [col]: e.target.checked }))}
+                          className="rounded"
+                        />
+                        {labels[col]}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <Button
               size="sm"
               variant={groupByPerson ? "default" : "outline"}
@@ -470,7 +541,7 @@ export function TaskListView() {
             </Button>
 
             <div className="text-xs text-muted-foreground whitespace-nowrap hidden sm:block">
-              {toPersianDigits(filteredTasks.length)} تسک
+              {pagination ? toPersianDigits(pagination.total) : "—"} تسک
             </div>
           </div>
 
@@ -640,15 +711,15 @@ export function TaskListView() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-xs whitespace-nowrap w-[90px]">کد</TableHead>
-                  <TableHead className="text-xs whitespace-nowrap min-w-[160px]">عنوان</TableHead>
-                  <TableHead className="text-xs whitespace-nowrap hidden md:table-cell">مجموعه</TableHead>
-                  <TableHead className="text-xs whitespace-nowrap hidden md:table-cell">مسئول</TableHead>
-                  <TableHead className="text-xs whitespace-nowrap hidden lg:table-cell">اولویت</TableHead>
-                  <TableHead className="text-xs whitespace-nowrap hidden lg:table-cell">منبع</TableHead>
-                  <TableHead className="text-xs whitespace-nowrap">وضعیت</TableHead>
-                  <TableHead className="text-xs whitespace-nowrap hidden xl:table-cell">ددلاین</TableHead>
-                  <TableHead className="text-xs whitespace-nowrap w-16 text-center">عملیات</TableHead>
+                  {visibleCols.code && <TableHead className="text-xs whitespace-nowrap w-[90px]">کد</TableHead>}
+                  {visibleCols.title && <TableHead className="text-xs whitespace-nowrap min-w-[160px]">عنوان</TableHead>}
+                  {visibleCols.group && <TableHead className="text-xs whitespace-nowrap">مجموعه</TableHead>}
+                  {visibleCols.assignee && <TableHead className="text-xs whitespace-nowrap">مسئول</TableHead>}
+                  {visibleCols.priority && <TableHead className="text-xs whitespace-nowrap">اولویت</TableHead>}
+                  {visibleCols.source && <TableHead className="text-xs whitespace-nowrap">منبع</TableHead>}
+                  {visibleCols.status && <TableHead className="text-xs whitespace-nowrap">وضعیت</TableHead>}
+                  {visibleCols.deadline && <TableHead className="text-xs whitespace-nowrap">ددلاین</TableHead>}
+                  {visibleCols.actions && <TableHead className="text-xs whitespace-nowrap w-16 text-center">عملیات</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -656,64 +727,82 @@ export function TaskListView() {
                   const overdue = isOverdue(new Date(task.deadline), task.status);
                   return (
                     <TableRow key={task.id} className="group">
-                      <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
-                        {task.code}
-                      </TableCell>
-                      <TableCell
-                        className="text-sm font-medium max-w-[200px] sm:max-w-[280px] cursor-pointer truncate"
-                        onClick={() => openDetail(task)}
-                      >
-                        <span className="hover:text-primary transition-colors">
-                          {task.title}
-                        </span>
-                        {overdue && (
-                          <span className="inline-flex items-center gap-0.5 mr-1.5 text-[10px] text-rose-600 dark:text-rose-400">
-                            <AlertTriangle className="h-2.5 w-2.5" />
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground hidden md:table-cell whitespace-nowrap">
-                        {task.groupName}
-                      </TableCell>
-                      <TableCell className="text-xs hidden md:table-cell whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[9px] font-bold shrink-0">
-                            {task.assigneeName.charAt(0)}
-                          </span>
-                          <span className="truncate max-w-[100px]">{task.assigneeName}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell">
-                        <PriorityBadge priority={task.priority} />
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell">
-                        <SourceBadge source={task.source} />
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={task.status} />
-                      </TableCell>
-                      <TableCell className="hidden xl:table-cell whitespace-nowrap">
-                        <span
-                          className={cn(
-                            "text-xs",
-                            overdue
-                              ? "text-rose-600 dark:text-rose-400 font-medium"
-                              : "text-muted-foreground"
-                          )}
-                        >
-                          {formatJalaliDate(new Date(task.deadline))}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
+                      {visibleCols.code && (
+                        <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+                          {task.code}
+                        </TableCell>
+                      )}
+                      {visibleCols.title && (
+                        <TableCell
+                          className="text-sm font-medium max-w-[200px] sm:max-w-[280px] cursor-pointer truncate"
                           onClick={() => openDetail(task)}
                         >
-                          <Eye className="h-3.5 w-3.5" />
-                        </Button>
-                      </TableCell>
+                          <span className="hover:text-primary transition-colors">
+                            {task.title}
+                          </span>
+                          {overdue && (
+                            <span className="inline-flex items-center gap-0.5 mr-1.5 text-[10px] text-rose-600 dark:text-rose-400">
+                              <AlertTriangle className="h-2.5 w-2.5" />
+                            </span>
+                          )}
+                        </TableCell>
+                      )}
+                      {visibleCols.group && (
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {task.groupName}
+                        </TableCell>
+                      )}
+                      {visibleCols.assignee && (
+                        <TableCell className="text-xs whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[9px] font-bold shrink-0">
+                              {task.assigneeName.charAt(0)}
+                            </span>
+                            <span className="truncate max-w-[100px]">{task.assigneeName}</span>
+                          </div>
+                        </TableCell>
+                      )}
+                      {visibleCols.priority && (
+                        <TableCell>
+                          <PriorityBadge priority={task.priority} />
+                        </TableCell>
+                      )}
+                      {visibleCols.source && (
+                        <TableCell>
+                          <SourceBadge source={task.source} />
+                        </TableCell>
+                      )}
+                      {visibleCols.status && (
+                        <TableCell>
+                          <StatusBadge status={task.status} />
+                        </TableCell>
+                      )}
+                      {visibleCols.deadline && (
+                        <TableCell className="whitespace-nowrap">
+                          <span
+                            className={cn(
+                              "text-xs",
+                              overdue
+                                ? "text-rose-600 dark:text-rose-400 font-medium"
+                                : "text-muted-foreground"
+                            )}
+                          >
+                            {formatJalaliDate(new Date(task.deadline))}
+                          </span>
+                        </TableCell>
+                      )}
+                      {visibleCols.actions && (
+                        <TableCell className="text-center">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => openDetail(task)}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })}
@@ -722,6 +811,55 @@ export function TaskListView() {
             <ScrollBar orientation="horizontal" />
             <ScrollBar orientation="vertical" />
           </ScrollArea>
+
+          {/* Pagination */}
+          {pagination && pagination.totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-2 border-t">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={page <= 1}
+                onClick={() => setPage(1)}
+                title="اولین صفحه"
+              >
+                <ChevronsRight className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+                title="صفحه قبل"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+              <span className="text-xs text-muted-foreground min-w-[100px] text-center">
+                {toPersianDigits(page)} از {toPersianDigits(pagination.totalPages)}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={page >= pagination.totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                title="صفحه بعد"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={page >= pagination.totalPages}
+                onClick={() => setPage(pagination.totalPages)}
+                title="آخرین صفحه"
+              >
+                <ChevronsLeft className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
         )}
       </Card>
 

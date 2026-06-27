@@ -3,8 +3,20 @@ import { db } from "@/lib/db";
 import { serializeTask } from "@/lib/serialize";
 import { getCurrentMember, getVisibleMemberIds, canManage, isManagerOfGroup } from "@/lib/auth";
 import { STATUSES, PRIORITIES } from "@/lib/constants";
+import { toGregorian, toEnglishDigits } from "@/lib/jalali";
 
-// GET /api/tasks?status=&groupId=&priority=&source=&overdue=1&dateFrom=&dateTo=&assigneeId=
+// Convert "1404/03/15" or "1404-03-15" Jalali string to Date
+function jalaliToDate(str: string): Date | null {
+  const cleaned = toEnglishDigits(str.trim()).replace(/[\/\\]/g, "-");
+  const parts = cleaned.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((p) => isNaN(p))) return null;
+  const [jy, jm, jd] = parts;
+  if (jy < 1300 || jy > 1600 || jm < 1 || jm > 12 || jd < 1 || jd > 31) return null;
+  const [gy, gm, gd] = toGregorian(jy, jm, jd);
+  return new Date(gy, gm - 1, gd);
+}
+
+// GET /api/tasks?status=&groupId=&priority=&source=&overdue=1&dateFrom=&dateTo=&assigneeId=&page=&limit=
 export async function GET(req: NextRequest) {
   try {
     const me = await getCurrentMember();
@@ -18,9 +30,11 @@ export async function GET(req: NextRequest) {
     const priority = searchParams.get("priority");
     const source = searchParams.get("source");
     const overdue = searchParams.get("overdue") === "1";
-    const dateFrom = searchParams.get("dateFrom");
-    const dateTo = searchParams.get("dateTo");
+    const dateFromStr = searchParams.get("dateFrom");
+    const dateToStr = searchParams.get("dateTo");
     const assigneeId = searchParams.get("assigneeId");
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "12", 10) || 12));
 
     // Role-based visibility
     const visibleIds = await getVisibleMemberIds(me);
@@ -35,19 +49,33 @@ export async function GET(req: NextRequest) {
     if (source) where.source = source;
     if (assigneeId) where.assigneeId = assigneeId;
 
-    // Date range filter on deadline
-    if (dateFrom || dateTo) {
+    // Date range filter on deadline — accept both Gregorian (YYYY-MM-DD) and Jalali
+    if (dateFromStr || dateToStr) {
       const dateFilter: Record<string, unknown> = {};
-      if (dateFrom) dateFilter.gte = new Date(dateFrom);
-      if (dateTo) dateFilter.lte = new Date(dateTo);
-      where.deadline = dateFilter;
+      if (dateFromStr) {
+        const d = jalaliToDate(dateFromStr) || new Date(dateFromStr);
+        if (!isNaN(d.getTime())) dateFilter.gte = d;
+      }
+      if (dateToStr) {
+        const d = jalaliToDate(dateToStr) || new Date(dateToStr);
+        if (!isNaN(d.getTime())) {
+          d.setHours(23, 59, 59, 999);
+          dateFilter.lte = d;
+        }
+      }
+      if (Object.keys(dateFilter).length > 0) where.deadline = dateFilter;
     }
 
-    const tasks = await db.task.findMany({
-      where,
-      include: { assignee: true, group: true, referer: true, approver: true },
-      orderBy: { deadline: "asc" },
-    });
+    const [tasks, total] = await Promise.all([
+      db.task.findMany({
+        where,
+        include: { assignee: true, group: true, referer: true, approver: true },
+        orderBy: { deadline: "asc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      db.task.count({ where }),
+    ]);
 
     let result = tasks.map(serializeTask);
     if (overdue) {
@@ -57,7 +85,10 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ tasks: result });
+    return NextResponse.json({
+      tasks: result,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
   } catch (error) {
     console.error("Tasks GET error:", error);
     return NextResponse.json({ error: "خطای سرور" }, { status: 500 });
