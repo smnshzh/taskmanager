@@ -81,7 +81,11 @@ import {
   Users,
   ChevronDown,
   ChevronRight,
+  Pencil,
+  Save,
+  X,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 
 /* ------------------------------------------------------------------ */
 /*  Badge helpers                                                      */
@@ -755,6 +759,11 @@ function TaskDetailSheet({
   const [busy, setBusy] = React.useState(false);
   const [showReasonPicker, setShowReasonPicker] = React.useState(false);
   const [showArchivePrompt, setShowArchivePrompt] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
+  const [editTitle, setEditTitle] = React.useState("");
+  const [editDesc, setEditDesc] = React.useState("");
+  const [editPriority, setEditPriority] = React.useState("");
+  const [editDeadline, setEditDeadline] = React.useState("");
 
   React.useEffect(() => {
     if (!task) return;
@@ -827,6 +836,42 @@ function TaskDetailSheet({
     }
   }
 
+  function startEdit() {
+    if (!task) return;
+    setEditTitle(task.title);
+    setEditDesc(task.description ?? "");
+    setEditPriority(task.priority);
+    setEditDeadline(task.deadline.slice(0, 10));
+    setEditing(true);
+  }
+
+  async function saveEdit() {
+    if (!task) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editTitle,
+          description: editDesc || null,
+          priority: editPriority,
+          deadline: new Date(editDeadline).toISOString(),
+        }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setLogs(data.logs ?? []);
+      toast.success("تسک به‌روزرسانی شد.");
+      setEditing(false);
+      onUpdated();
+    } catch {
+      toast.error("به‌روزرسانی ناموفق بود.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -875,6 +920,74 @@ function TaskDetailSheet({
                     label="وضعیت تأیید"
                     value={task.approvalStatusLabel ?? "—"}
                   />
+                </div>
+              </div>
+            )}
+
+            {/* Edit form */}
+            {editing && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold flex items-center gap-1.5">
+                    <Pencil className="h-4 w-4" />
+                    ویرایش تسک
+                  </span>
+                  <div className="flex gap-1.5">
+                    <Button size="sm" className="gap-1 text-xs h-8" onClick={saveEdit} disabled={busy}>
+                      <Save className="h-3.5 w-3.5" />
+                      ذخیره
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setEditing(false)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs text-muted-foreground">عنوان</label>
+                  <Input
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs text-muted-foreground">توضیحات</label>
+                  <Textarea
+                    value={editDesc}
+                    onChange={(e) => setEditDesc(e.target.value)}
+                    className="text-sm min-h-[80px]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">اولویت</label>
+                    <Select value={editPriority} onValueChange={setEditPriority}>
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PRIORITIES.map((p) => (
+                          <SelectItem key={p.key} value={p.key}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">ددلاین</label>
+                    <Input
+                      type="date"
+                      value={editDeadline}
+                      onChange={(e) => setEditDeadline(e.target.value)}
+                      className="h-9 text-xs"
+                      dir="ltr"
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -956,6 +1069,22 @@ function TaskDetailSheet({
                 )}{" "}
                 روز از ددلاین گذشته است.
               </div>
+            )}
+
+            <Separator />
+
+            {/* Edit button */}
+            {!editing && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 text-xs h-9"
+                disabled={busy}
+                onClick={startEdit}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                ویرایش تسک
+              </Button>
             )}
 
             <Separator />

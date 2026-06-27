@@ -120,9 +120,9 @@ export async function PATCH(
     let newAssigneeName: string | null = null;
     let oldAssigneeName: string | null = null;
     if (assigneeId && assigneeId !== existing.assigneeId) {
-      if (me.role !== "MANAGER" && me.role !== "SUPERVISOR") {
+      if (me.role !== "MANAGER" && me.role !== "SUPERVISOR" && me.role !== "SUPER_ADMIN") {
         return NextResponse.json(
-          { error: "تنها مدیر یا سرپرست می‌تواند مسئول را تغییر دهد." },
+          { error: "تنها مدیر، سرپرست یا مدیر کل می‌تواند مسئول را تغییر دهد." },
           { status: 403 }
         );
       }
