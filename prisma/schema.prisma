@@ -134,7 +134,8 @@ model Task {
   link           String?
   followUpReason String?
   startedAt      DateTime?
-  doneAt         DateTime?
+  doneDescription String?
+  doneAt          DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   logs           FollowUpLog[]

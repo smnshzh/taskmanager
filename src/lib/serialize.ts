@@ -163,6 +163,7 @@ export type SerializedTask = {
   link: string | null;
   followUpReason: string | null;
   startedAt: string | null;
+  doneDescription: string | null;
   doneAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -201,6 +202,7 @@ export function serializeTask(
     link: task.link,
     followUpReason: task.followUpReason,
     startedAt: task.startedAt ? task.startedAt.toISOString() : null,
+    doneDescription: task.doneDescription,
     doneAt: task.doneAt ? task.doneAt.toISOString() : null,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),

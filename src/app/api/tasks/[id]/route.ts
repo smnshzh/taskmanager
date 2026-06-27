@@ -68,6 +68,7 @@ export async function PATCH(
       priority,
       deadline,
       link,
+      doneDescription,
     } = body ?? {};
 
     // Lean select — only fields needed for business logic (no relation joins)
@@ -150,6 +151,7 @@ export async function PATCH(
     }
     if (deadline !== undefined) data.deadline = new Date(deadline);
     if (link !== undefined) data.link = link ?? null;
+    if (doneDescription !== undefined) data.doneDescription = doneDescription ? String(doneDescription).trim() : null;
 
     const updated = await db.task.update({
       where: { id },

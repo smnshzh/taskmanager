@@ -898,6 +898,8 @@ function TaskDetailSheet({
   const [busy, setBusy] = React.useState(false);
   const [showReasonPicker, setShowReasonPicker] = React.useState(false);
   const [showArchivePrompt, setShowArchivePrompt] = React.useState(false);
+  const [doneDesc, setDoneDesc] = React.useState("");
+  const [showDoneInput, setShowDoneInput] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [editTitle, setEditTitle] = React.useState("");
   const [editDesc, setEditDesc] = React.useState("");
@@ -925,14 +927,14 @@ function TaskDetailSheet({
   const overdue = isOverdue(new Date(task.deadline), task.status);
   const dl = new Date(task.deadline);
 
-  async function updateStatus(status: string) {
+  async function updateStatus(status: string, extra?: Record<string, unknown>) {
     if (!task) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, ...extra }),
       });
       if (!res.ok) throw new Error();
       const data = await res.json();
@@ -1170,6 +1172,15 @@ function TaskDetailSheet({
                   value={`${formatJalaliDate(new Date(task.doneAt))} ${toPersianDigits(formatTime(new Date(task.doneAt)))}`}
                 />
               )}
+              {task.doneDescription && (
+                <div className="flex items-start gap-2 py-1.5">
+                  <FileText className="h-4 w-4 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-muted-foreground mb-0.5">توضیحات انجام کار</p>
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{task.doneDescription}</p>
+                  </div>
+                </div>
+              )}
               <MetaRow
                 icon={<Circle className="h-4 w-4" />}
                 label="مجموعه"
@@ -1284,13 +1295,56 @@ function TaskDetailSheet({
                   </ActionBtn>
                   <ActionBtn
                     disabled={busy || task.status === "DONE"}
-                    onClick={() => updateStatus("DONE")}
+                    onClick={() => {
+                      if (task.status === "DONE") return;
+                      setDoneDesc("");
+                      setShowDoneInput(true);
+                    }}
                     active={task.status === "DONE"}
                     className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
                   >
                     <CheckCircle2 className="h-4 w-4" />
                     انجام شد
                   </ActionBtn>
+                </div>
+              )}
+
+              {showDoneInput && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2 dark:border-emerald-800 dark:bg-emerald-950/30">
+                  <p className="text-xs font-medium text-emerald-800 dark:text-emerald-200">
+                    توضیحات انجام تسک را بنویسید:
+                  </p>
+                  <Textarea
+                    value={doneDesc}
+                    onChange={(e) => setDoneDesc(e.target.value)}
+                    placeholder="چه کاری انجام دادید؟..."
+                    rows={3}
+                    className="text-sm resize-none"
+                    dir="rtl"
+                  />
+                  <div className="flex items-center gap-2 justify-end">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowDoneInput(false)}
+                      disabled={busy}
+                    >
+                      <X className="h-3.5 w-3.5 ml-1" />
+                      انصراف
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={() => {
+                        setShowDoneInput(false);
+                        updateStatus("DONE", { doneDescription: doneDesc || null });
+                      }}
+                      disabled={busy}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5 ml-1" />
+                      ثبت انجام تسک
+                    </Button>
+                  </div>
                 </div>
               )}
 
