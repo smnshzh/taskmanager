@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ['192.168.1.22'],
   output: "standalone",
   turbopack: {
-    root: "/home/z",
+    root: ".",
   },
   typescript: {
     ignoreBuildErrors: true,
