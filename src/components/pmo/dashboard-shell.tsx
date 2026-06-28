@@ -65,7 +65,7 @@ const ALL_NAV: NavItem[] = [
   { key: "overview", label: "داشبورد", icon: LayoutDashboard, desc: "نمای کلی و شاخص‌ها" },
   { key: "kanban", label: "کانبان", icon: KanbanSquare, desc: "نمودار کانبان تسک‌ها" },
   { key: "list", label: "لیست تسک‌ها", icon: ListChecks, desc: "جدول با فیلترهای پیشرفته" },
-  { key: "scheduler", label: "زمان‌بندی", icon: CalendarClock, desc: "زمان‌بندی و قالب‌های تسک", roles: ["MANAGER", "SUPERVISOR"] },
+  { key: "scheduler", label: "زمان‌بندی", icon: CalendarClock, desc: "زمان‌بندی و قالب‌های تسک", roles: ["SUPER_ADMIN", "MANAGER", "SUPERVISOR"] },
   { key: "referred", label: "ارجاع نامه‌ای", icon: FileText, desc: "تسک‌های ارجاعی" },
   { key: "mytasks", label: "کارهای من", icon: CheckSquare, desc: "تسک‌های شخصی من" },
   { key: "members", label: "اعضا", icon: Users, desc: "مدیریت اعضا", roles: ["MANAGER", "SUPERVISOR"] },
@@ -468,7 +468,7 @@ export function DashboardShell() {
             {view === "kanban" && <KanbanView />}
             {view === "list" && <TaskListView />}
             {view === "scheduler" && (
-              (role === "MANAGER" || role === "SUPERVISOR") && (
+              (role === "SUPER_ADMIN" || role === "MANAGER" || role === "SUPERVISOR") && (
                 <SchedulerView />
               )
             )}
