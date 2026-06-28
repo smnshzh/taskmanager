@@ -5,15 +5,21 @@ import { PRIORITIES } from "@/lib/constants";
 import { getCurrentMember, isManagerOfGroup, getManagedGroupIds } from "@/lib/auth";
 
 // GET /api/templates — filtered by group if not SUPER_ADMIN
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const me = await getCurrentMember();
     if (!me) {
       return NextResponse.json({ error: "نشست نامعتبر است." }, { status: 401 });
     }
 
+    // Support ?groupId=... query param for explicit group filtering
+    const { searchParams } = new URL(req.url);
+    const queryGroupId = searchParams.get("groupId");
+
     const where: Record<string, unknown> = {};
-    if (me.role !== "SUPER_ADMIN") {
+    if (queryGroupId) {
+      where.groupId = queryGroupId;
+    } else if (me.role !== "SUPER_ADMIN") {
       if (me.role === "MANAGER") {
         const ids = getManagedGroupIds(me);
         if (ids.length > 0) where.groupId = { in: ids };

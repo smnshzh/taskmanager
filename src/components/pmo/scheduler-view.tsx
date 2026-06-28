@@ -64,6 +64,7 @@ import {
   Download,
   Pencil,
   ListChecks,
+  X,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -512,6 +513,7 @@ export function SchedulerView() {
           <TemplateManager
             key={templateMgrOpen ? "open" : "closed"}
             templates={templates}
+            groupId={groupId}
             onSuccess={() => {
               setTemplateMgrOpen(false);
             }}
@@ -932,10 +934,11 @@ function OverrideForm({ schedule, members, onSuccess }: OverrideFormProps) {
 
 interface TemplateManagerProps {
   templates: SerializedTaskTemplate[];
+  groupId: string;
   onSuccess: () => void;
 }
 
-function TemplateManager({ templates, onSuccess }: TemplateManagerProps) {
+function TemplateManager({ templates, groupId, onSuccess }: TemplateManagerProps) {
   const queryClient = useQueryClient();
   const [editId, setEditId] = React.useState<string | null>(null);
   const [editName, setEditName] = React.useState("");
@@ -943,6 +946,52 @@ function TemplateManager({ templates, onSuccess }: TemplateManagerProps) {
   const [editPriority, setEditPriority] = React.useState("MEDIUM");
   const [deleteConfirmId, setDeleteConfirmId] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+
+  // Create new template state
+  const [showCreateForm, setShowCreateForm] = React.useState(false);
+  const [newName, setNewName] = React.useState("");
+  const [newDesc, setNewDesc] = React.useState("");
+  const [newPriority, setNewPriority] = React.useState("MEDIUM");
+  const [creating, setCreating] = React.useState(false);
+
+  const resetCreateForm = () => {
+    setNewName("");
+    setNewDesc("");
+    setNewPriority("MEDIUM");
+    setShowCreateForm(false);
+  };
+
+  const handleCreate = async () => {
+    if (!newName.trim()) {
+      toast.error("نام الگو الزامی است.");
+      return;
+    }
+    setCreating(true);
+    try {
+      const r = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newName.trim(),
+          description: newDesc.trim() || null,
+          groupId,
+          priority: newPriority,
+        }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        toast.error(data.error ?? "خطا در ایجاد الگو");
+        return;
+      }
+      toast.success("الگوی جدید با موفقیت ایجاد شد.");
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
+      resetCreateForm();
+    } catch {
+      toast.error("خطا در ارسال درخواست.");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const startEdit = (t: SerializedTaskTemplate) => {
     setEditId(t.id);
@@ -1010,16 +1059,104 @@ function TemplateManager({ templates, onSuccess }: TemplateManagerProps) {
     }
   };
 
-  if (templates.length === 0) {
+  if (templates.length === 0 && !showCreateForm) {
     return (
-      <div className="py-8 text-center text-sm text-muted-foreground">
-        هیچ الگویی برای این مجموعه وجود ندارد.
+      <div className="py-8 text-center space-y-4">
+        <div className="text-sm text-muted-foreground">
+          هیچ الگویی برای این مجموعه وجود ندارد.
+        </div>
+        <Button
+          size="sm"
+          onClick={() => setShowCreateForm(true)}
+          className="gap-1.5"
+        >
+          <Plus className="h-4 w-4" />
+          ایجاد الگوی اول
+        </Button>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {/* Header with create button */}
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium text-muted-foreground">
+          {toPersianDigits(templates.length)} الگو
+        </div>
+        {!showCreateForm && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowCreateForm(true)}
+            className="gap-1.5 h-8 text-xs"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            الگوی جدید
+          </Button>
+        )}
+      </div>
+
+      {/* Create new template form */}
+      {showCreateForm && (
+        <div className="rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">ایجاد الگوی جدید</div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0"
+              onClick={resetCreateForm}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs font-medium">نام الگو *</Label>
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="مثلاً: بروزرسانی گزارش هفتگی"
+              className="text-sm"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs font-medium">توضیحات</Label>
+            <Input
+              value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value)}
+              placeholder="توضیحات اختیاری..."
+              className="text-sm"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs font-medium">اولویت</Label>
+            <Select value={newPriority} onValueChange={setNewPriority}>
+              <SelectTrigger className="text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRIORITIES.map((p) => (
+                  <SelectItem key={p.key} value={p.key}>
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button size="sm" onClick={handleCreate} disabled={creating}>
+              {creating ? "در حال ایجاد..." : "ایجاد الگو"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={resetCreateForm}>
+              انصراف
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Existing templates list */}
       {templates.map((t) => (
         <div
           key={t.id}
