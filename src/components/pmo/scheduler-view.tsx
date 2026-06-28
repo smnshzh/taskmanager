@@ -108,6 +108,13 @@ export function SchedulerView() {
   });
   const groups = groupsData?.groups ?? [];
 
+  // Auto-select first group if none selected (e.g. SUPER_ADMIN has no groupId)
+  React.useEffect(() => {
+    if (!groupId && groups.length > 0) {
+      setGroupId(groups[0].id);
+    }
+  }, [groups, groupId]);
+
   const { data: schedulesData, isLoading: schedulesLoading } = useQuery<{
     schedules: SerializedSchedule[];
   }>({
