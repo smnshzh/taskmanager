@@ -11,7 +11,8 @@ export type ViewKey =
   | "mytasks"
   | "members"
   | "groups"
-  | "admin";
+  | "admin"
+  | "trash";
 
 export type CurrentMember = {
   id: string;

@@ -136,6 +136,7 @@ model Task {
   startedAt      DateTime?
   doneDescription String?
   doneAt          DateTime?
+  deletedAt       DateTime?   // Soft delete — null = active, non-null = in trash
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   logs           FollowUpLog[]
@@ -146,6 +147,7 @@ model Task {
   @@index([deadline])
   @@index([approvalStatus])
   @@index([source])
+  @@index([deletedAt])
 }
 
 // ---- Follow-up / activity log per task ----

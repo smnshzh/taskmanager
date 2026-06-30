@@ -25,6 +25,7 @@ import { MyTasksView } from "./my-tasks-view";
 import { MembersView } from "./members-view";
 import { GroupsView } from "./groups-view";
 import { AdminView } from "./admin-view";
+import { TrashView } from "./trash-view";
 import { useTMStore, type ViewKey } from "@/lib/pmo-store";
 import { ROLES, roleByKey } from "@/lib/constants";
 import type { SerializedTask } from "@/lib/serialize";
@@ -47,6 +48,7 @@ import {
   LogOut,
   ChevronDown,
   Crown,
+  Trash2,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -70,6 +72,7 @@ const ALL_NAV: NavItem[] = [
   { key: "mytasks", label: "کارهای من", icon: CheckSquare, desc: "تسک‌های شخصی من" },
   { key: "members", label: "اعضا", icon: Users, desc: "مدیریت اعضا", roles: ["MANAGER", "SUPERVISOR"] },
   { key: "groups", label: "مجموعه‌ها", icon: Building2, desc: "مدیریت مجموعه‌های سازمانی", roles: ["SUPER_ADMIN"] },
+  { key: "trash", label: "سطل زباله", icon: Trash2, desc: "تسک‌های حذف‌شده", roles: ["SUPER_ADMIN", "MANAGER"] },
   { key: "admin", label: "مدیریت سیستم", icon: Settings, desc: "تنظیمات و مدیریت سیستم", roles: ["SUPER_ADMIN"] },
 ];
 
@@ -476,6 +479,7 @@ export function DashboardShell() {
             {view === "mytasks" && <MyTasksView />}
             {view === "members" && (role === "SUPER_ADMIN" || role === "MANAGER") && <MembersView />}
             {view === "groups" && role === "SUPER_ADMIN" && <GroupsView />}
+            {view === "trash" && (role === "SUPER_ADMIN" || role === "MANAGER") && <TrashView />}
             {view === "admin" && role === "SUPER_ADMIN" && <AdminView />}
           </div>
         </main>

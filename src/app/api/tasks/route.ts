@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
     const priority = searchParams.get("priority");
     const source = searchParams.get("source");
     const overdue = searchParams.get("overdue") === "1";
+    const trash = searchParams.get("trash") === "1";
     const dateFromStr = searchParams.get("dateFrom");
     const dateToStr = searchParams.get("dateTo");
     const assigneeId = searchParams.get("assigneeId");
@@ -41,6 +42,7 @@ export async function GET(req: NextRequest) {
 
     const where: Record<string, unknown> = {
       assigneeId: { in: visibleIds },
+      deletedAt: trash ? { not: null } : null,
     };
 
     if (status) where.status = status;

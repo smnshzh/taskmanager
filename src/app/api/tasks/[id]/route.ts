@@ -24,7 +24,7 @@ export async function GET(
       },
     });
 
-    if (!task) {
+    if (!task || task.deletedAt) {
       return NextResponse.json({ error: "تسک یافت نشد." }, { status: 404 });
     }
 
@@ -214,7 +214,7 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/tasks/[id] — MANAGER+ only
+// DELETE /api/tasks/[id] — Soft delete (move to trash), MANAGER+ only
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -231,7 +231,7 @@ export async function DELETE(
     }
 
     const task = await db.task.findUnique({ where: { id } });
-    if (!task) {
+    if (!task || task.deletedAt) {
       return NextResponse.json({ error: "تسک یافت نشد." }, { status: 404 });
     }
 
@@ -245,7 +245,10 @@ export async function DELETE(
       }
     }
 
-    await db.task.delete({ where: { id } });
+    await db.task.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error: unknown) {

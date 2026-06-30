@@ -1038,7 +1038,7 @@ function TaskDetailSheet({
         toast.error(d.error ?? "خطا در حذف تسک");
         return;
       }
-      toast.success("تسک حذف شد.");
+      toast.success("تسک به سطل زباله منتقل شد.");
       setShowDeleteConfirm(false);
       onOpenChange(false);
       onUpdated();
@@ -1464,9 +1464,9 @@ function TaskDetailSheet({
     <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>حذف تسک</AlertDialogTitle>
+          <AlertDialogTitle>انتقال به سطل زباله</AlertDialogTitle>
           <AlertDialogDescription>
-            آیا از حذف تسک «{task?.title}» مطمئن هستید؟ این عمل قابل بازگشت نیست.
+            آیا از انتقال تسک «{task?.title}» به سطل زباله مطمئن هستید؟ این تسک قابل بازیابی خواهد بود.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

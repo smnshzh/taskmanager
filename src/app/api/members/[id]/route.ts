@@ -45,6 +45,7 @@ export async function GET(
       where: {
         assigneeId: id,
         status: { notIn: ["DONE"] },
+        deletedAt: null,
       },
     });
 
@@ -163,6 +164,7 @@ export async function PATCH(
       where: {
         assigneeId: id,
         status: { notIn: ["DONE"] },
+        deletedAt: null,
       },
     });
 

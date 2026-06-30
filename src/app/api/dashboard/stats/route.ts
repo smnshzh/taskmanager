@@ -34,7 +34,7 @@ export async function GET() {
   // ---- Status counts (single query) ----
   const statusCountsRaw = await db.task.groupBy({
     by: ["status"],
-    where: { assigneeId: { in: visibleIds } },
+    where: { assigneeId: { in: visibleIds }, deletedAt: null },
     _count: { status: true },
   });
   const statusCounts: Record<string, number> = {
@@ -54,6 +54,7 @@ export async function GET() {
       assigneeId: { in: visibleIds },
       status: { not: "DONE" },
       deadline: { lt: now },
+      deletedAt: null,
     },
     select: { groupId: true },
   });
@@ -92,7 +93,7 @@ export async function GET() {
   // ---- Group workload summary ----
   const groupTaskCounts = await db.task.groupBy({
     by: ["groupId", "status"],
-    where: { assigneeId: { in: visibleIds } },
+    where: { assigneeId: { in: visibleIds }, deletedAt: null },
     _count: { status: true },
   });
 
@@ -144,6 +145,7 @@ export async function GET() {
       assigneeId: { in: visibleIds },
       status: "DONE",
       doneAt: { not: null },
+      deletedAt: null,
     },
     select: { doneAt: true },
   });
@@ -185,6 +187,7 @@ export async function GET() {
       assigneeId: { in: visibleIds },
       status: { not: "DONE" },
       deadline: { lt: now },
+      deletedAt: null,
     },
     select: { deadline: true },
   });
@@ -215,6 +218,7 @@ export async function GET() {
       assigneeId: { in: visibleIds },
       status: "BLOCKED",
       followUpReason: { not: null },
+      deletedAt: null,
     },
     select: { followUpReason: true },
   });
@@ -245,6 +249,7 @@ export async function GET() {
         gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
         lt: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
       },
+      deletedAt: null,
     },
   });
 
