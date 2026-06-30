@@ -22,7 +22,6 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  KANBAN_ORDER,
   FOLLOW_UP_REASONS,
   priorityByKey,
   statusByKey,
@@ -292,10 +291,19 @@ export function KanbanView() {
     return Array.from(set).sort();
   }, [tasks]);
 
-  // Filter tasks
+  // Filter tasks — only non-DONE, deadline today or earlier
   const filteredTasks = React.useMemo(() => {
-    if (groupFilter === "all") return tasks;
-    return tasks.filter((t) => t.groupName === groupFilter);
+    const now = new Date();
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return tasks.filter((t) => {
+      // Exclude DONE tasks
+      if (t.status === "DONE") return false;
+      // Only show tasks whose deadline is today or earlier
+      if (new Date(t.deadline).getTime() > endOfToday.getTime()) return false;
+      // Group filter
+      if (groupFilter !== "all" && t.groupName !== groupFilter) return false;
+      return true;
+    });
   }, [tasks, groupFilter]);
 
   // Mutation for status change
@@ -348,10 +356,11 @@ export function KanbanView() {
     );
   }
 
-  // Group tasks by column status
+  // Group tasks by column status (exclude DONE)
+  const KANBAN_VISIBLE = ["PENDING", "STARTED", "BLOCKED"];
   const columns = React.useMemo(() => {
     const colMap = new Map<string, SerializedTask[]>();
-    KANBAN_ORDER.forEach((s) => colMap.set(s, []));
+    KANBAN_VISIBLE.forEach((s) => colMap.set(s, []));
     filteredTasks.forEach((t) => {
       const list = colMap.get(t.status);
       if (list) list.push(t);
@@ -387,8 +396,8 @@ export function KanbanView() {
 
       {/* ---- Columns ---- */}
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 flex-1">
-          {KANBAN_ORDER.map((s) => (
+        <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-3 gap-3 flex-1">
+          {["PENDING", "STARTED", "BLOCKED"].map((s) => (
             <div key={s} className="space-y-3">
               <Skeleton className="h-8 w-full rounded-lg" />
               <div className="space-y-2">
@@ -401,8 +410,8 @@ export function KanbanView() {
         </div>
       ) : (
         /* تغییر اصلی در این تگ انجام شد: ارتفاع ۱۰۰٪ داده شد تا ScrollArea به درستی کار کند */
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 flex-1 min-h-0 h-full">
-          {KANBAN_ORDER.map((statusKey) => {
+        <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-3 gap-3 flex-1 min-h-0 h-full">
+          {KANBAN_VISIBLE.map((statusKey) => {
             const statusInfo = statusByKey(statusKey);
             const columnTasks = columns.get(statusKey) ?? [];
             return (
