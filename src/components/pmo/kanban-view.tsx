@@ -291,19 +291,15 @@ export function KanbanView() {
     return Array.from(set).sort();
   }, [tasks]);
 
-  // Filter tasks — only non-DONE, deadline today or earlier
+  // Filter tasks — only non-DONE, sort by deadline (soonest first)
   const filteredTasks = React.useMemo(() => {
-    const now = new Date();
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    return tasks.filter((t) => {
-      // Exclude DONE tasks
-      if (t.status === "DONE") return false;
-      // Only show tasks whose deadline is today or earlier
-      if (new Date(t.deadline).getTime() > endOfToday.getTime()) return false;
-      // Group filter
-      if (groupFilter !== "all" && t.groupName !== groupFilter) return false;
-      return true;
-    });
+    return tasks
+      .filter((t) => {
+        if (t.status === "DONE") return false;
+        if (groupFilter !== "all" && t.groupName !== groupFilter) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime());
   }, [tasks, groupFilter]);
 
   // Mutation for status change
