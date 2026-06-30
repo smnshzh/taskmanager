@@ -16,6 +16,12 @@ function jalaliToDate(str: string): Date | null {
   return new Date(gy, gm - 1, gd);
 }
 
+// Validate that a Date has a reasonable year for Prisma (PostgreSQL supports 1-9999)
+function isValidPrismaDate(d: Date): boolean {
+  const y = d.getFullYear();
+  return y >= 1900 && y <= 2200;
+}
+
 // GET /api/tasks?status=&groupId=&priority=&source=&overdue=1&dateFrom=&dateTo=&assigneeId=&page=&limit=
 export async function GET(req: NextRequest) {
   try {
@@ -56,11 +62,11 @@ export async function GET(req: NextRequest) {
       const dateFilter: Record<string, unknown> = {};
       if (dateFromStr) {
         const d = jalaliToDate(dateFromStr) || new Date(dateFromStr);
-        if (!isNaN(d.getTime())) dateFilter.gte = d;
+        if (!isNaN(d.getTime()) && isValidPrismaDate(d)) dateFilter.gte = d;
       }
       if (dateToStr) {
         const d = jalaliToDate(dateToStr) || new Date(dateToStr);
-        if (!isNaN(d.getTime())) {
+        if (!isNaN(d.getTime()) && isValidPrismaDate(d)) {
           d.setHours(23, 59, 59, 999);
           dateFilter.lte = d;
         }
