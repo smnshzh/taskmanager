@@ -39,6 +39,16 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   STATUSES,
   PRIORITIES,
   TASK_SOURCES,
@@ -60,6 +70,7 @@ import {
   toJalali,
 } from "@/lib/jalali";
 import { cn } from "@/lib/utils";
+import { useTMStore } from "@/lib/pmo-store";
 import { JalaliDatePicker } from "@/components/jalali-date-picker";
 import { toast } from "sonner";
 import {
@@ -91,6 +102,7 @@ import {
   ChevronsRight,
   ChevronsLeftRight,
   Columns3,
+  Trash2,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -906,6 +918,8 @@ function TaskDetailSheet({
   const [editDesc, setEditDesc] = React.useState("");
   const [editPriority, setEditPriority] = React.useState("");
   const [editDeadline, setEditDeadline] = React.useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
 
   React.useEffect(() => {
     if (!task) return;
@@ -1014,7 +1028,32 @@ function TaskDetailSheet({
     }
   }
 
+  async function handleDelete() {
+    if (!task) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error ?? "خطا در حذف تسک");
+        return;
+      }
+      toast.success("تسک حذف شد.");
+      setShowDeleteConfirm(false);
+      onOpenChange(false);
+      onUpdated();
+    } catch {
+      toast.error("خطا در حذف تسک.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const member = useTMStore((s) => s.member);
+  const canDelete = member?.role === "MANAGER" || member?.role === "SUPER_ADMIN";
+
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="left"
@@ -1223,18 +1262,32 @@ function TaskDetailSheet({
 
             <Separator />
 
-            {/* Edit button */}
+            {/* Edit & Delete buttons */}
             {!editing && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5 text-xs h-9"
-                disabled={busy}
-                onClick={startEdit}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                ویرایش تسک
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs h-9"
+                  disabled={busy}
+                  onClick={startEdit}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  ویرایش تسک
+                </Button>
+                {canDelete && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs h-9 text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                    disabled={busy}
+                    onClick={() => setShowDeleteConfirm(true)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    حذف تسک
+                  </Button>
+                )}
+              </div>
             )}
 
             <Separator />
@@ -1406,6 +1459,29 @@ function TaskDetailSheet({
         </ScrollArea>
       </SheetContent>
     </Sheet>
+
+    {/* Delete confirmation */}
+    <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>حذف تسک</AlertDialogTitle>
+          <AlertDialogDescription>
+            آیا از حذف تسک «{task?.title}» مطمئن هستید؟ این عمل قابل بازگشت نیست.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleting}>انصراف</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-rose-600 hover:bg-rose-700"
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            {deleting ? "در حال حذف..." : "حذف"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </>
   );
 }
 
