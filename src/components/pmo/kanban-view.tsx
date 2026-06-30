@@ -271,11 +271,11 @@ export function KanbanView() {
   const [blockedTaskId, setBlockedTaskId] = React.useState<string>("");
   const [blockedDialogOpen, setBlockedDialogOpen] = React.useState(false);
 
-  // Fetch tasks
+  // Fetch tasks (exclude DONE, fetch all at once)
   const { data: tasksData, isLoading } = useQuery({
-    queryKey: ["tasks", "all"],
+    queryKey: ["tasks", "kanban"],
     queryFn: async () => {
-      const r = await fetch("/api/tasks");
+      const r = await fetch("/api/tasks?limit=200");
       if (!r.ok) return { tasks: [] as SerializedTask[] };
       return (await r.json()) as { tasks: SerializedTask[] };
     },
@@ -325,6 +325,7 @@ export function KanbanView() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       toast.success("وضعیت تسک به‌روزرسانی شد.");
     },
     onError: () => {
