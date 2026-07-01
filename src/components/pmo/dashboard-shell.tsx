@@ -378,12 +378,6 @@ export function DashboardShell() {
             {nav.map((item) => {
               const Icon = item.icon;
               const active = view === item.key;
-              const count =
-                item.key === "list" || item.key === "kanban"
-                  ? tasks.length
-                  : item.key === "mytasks"
-                    ? tasks.filter((t) => t.status !== "DONE").length
-                    : null;
               return (
                 <button
                   key={item.key}
@@ -409,18 +403,6 @@ export function DashboardShell() {
                           : "text-amber-500"
                       )}
                     />
-                  )}
-                  {count !== null && count > 0 && (
-                    <span
-                      className={cn(
-                        "text-xs rounded-md px-1.5 py-0.5",
-                        active
-                          ? "bg-primary-foreground/20"
-                          : "bg-muted"
-                      )}
-                    >
-                      {toPersianDigits(count)}
-                    </span>
                   )}
                 </button>
               );
