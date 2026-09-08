@@ -6,11 +6,14 @@ export type ViewKey =
   | "overview"
   | "kanban"
   | "list"
+  | "workflow"
   | "scheduler"
   | "referred"
   | "mytasks"
   | "members"
   | "groups"
+  | "access-groups"
+  | "bale-management"
   | "admin"
   | "trash"
   | "donetasks";
@@ -23,6 +26,9 @@ export type CurrentMember = {
   groupId: string | null;
   groupName: string | null;
   supervisorId: string | null;
+  mustChangePassword: boolean;
+  permissions: string[];
+  accessGroups: { id: string; name: string }[];
 };
 
 interface TMState {

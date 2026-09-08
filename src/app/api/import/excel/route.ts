@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentMember, getManagedGroupIds } from "@/lib/auth";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 import * as XLSX from "xlsx";
 
 // Persian day name to number mapping
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "نشست نامعتبر است." }, { status: 401 });
     }
 
-    if (me.role === "SPECIALIST") {
+    if (!memberHasPermission(me, "schedule:import")) {
       return NextResponse.json(
         { error: "کارشناس نمی‌تواند فایل وارد کند." },
         { status: 403 }

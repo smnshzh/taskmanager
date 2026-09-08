@@ -6,6 +6,7 @@ set -euo pipefail
 # 使用 $0 获取脚本路径（与 build.sh 保持一致）
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+DEV_PORT="${PORT:-8502}"
 
 log_step_start() {
 	local step_name="$1"
@@ -137,12 +138,12 @@ DEV_PID=$!
 log_step_end "Starting Next.js dev server"
 
 log_step_start "Waiting for Next.js dev server"
-wait_for_service "localhost" "3000" "Next.js dev server"
+wait_for_service "localhost" "$DEV_PORT" "Next.js dev server"
 log_step_end "Waiting for Next.js dev server"
 
 log_step_start "Health check"
 echo "[BUN] Performing health check..."
-curl -fsS localhost:3000 >/dev/null
+curl -fsS "localhost:$DEV_PORT" >/dev/null
 echo "[BUN] Health check passed"
 log_step_end "Health check"
 

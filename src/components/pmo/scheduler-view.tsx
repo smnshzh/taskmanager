@@ -95,7 +95,7 @@ export function SchedulerView() {
     React.useState<SerializedSchedule | null>(null);
 
   // Only MANAGER and SUPER_ADMIN can manage templates
-  const canManageTemplates = member?.role === "MANAGER" || member?.role === "SUPER_ADMIN";
+  const canManageTemplates = member?.permissions.includes("template:create") ?? false;
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -111,7 +111,7 @@ export function SchedulerView() {
   // Auto-select first group if none selected (e.g. SUPER_ADMIN has no groupId)
   React.useEffect(() => {
     if (!groupId && groups.length > 0) {
-      setGroupId(groups[0].id);
+      queueMicrotask(() => setGroupId(groups[0].id));
     }
   }, [groups, groupId]);
 

@@ -50,6 +50,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useTMStore } from "@/lib/pmo-store";
 import { toPersianDigits, formatJalaliLong } from "@/lib/jalali";
+import { MultiSelect } from "@/components/ui/multi-select";
+import { MemberBaleSettings } from "@/features/notifications/components/member-bale-settings";
 import { cn } from "@/lib/utils";
 import { ROLES, roleByKey } from "@/lib/constants";
 import type { SerializedMember, SerializedGroup } from "@/lib/serialize";
@@ -112,7 +114,7 @@ export function MembersView() {
 
   // Filters
   const [search, setSearch] = React.useState("");
-  const [groupFilter, setGroupFilter] = React.useState<string>("all");
+  const [groupFilter, setGroupFilter] = React.useState<string[]>([]);
 
   // Dialogs
   const [dialogOpen, setDialogOpen] = React.useState(false);
@@ -132,8 +134,8 @@ export function MembersView() {
           m.handle.toLowerCase().includes(q)
       );
     }
-    if (groupFilter !== "all") {
-      list = list.filter((m) => m.groupId === groupFilter);
+    if (groupFilter.length > 0) {
+      list = list.filter((m) => m.groupId && groupFilter.includes(m.groupId));
     }
     return list;
   }, [members, search, groupFilter]);
@@ -227,19 +229,13 @@ export function MembersView() {
             className="pr-9"
           />
         </div>
-        <Select value={groupFilter} onValueChange={setGroupFilter}>
-          <SelectTrigger className="w-full sm:w-44">
-            <SelectValue placeholder="همه مجموعه‌ها" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">همه مجموعه‌ها</SelectItem>
-            {groups.map((g) => (
-              <SelectItem key={g.id} value={g.id}>
-                {g.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          className="w-full sm:w-48"
+          value={groupFilter}
+          onValueChange={setGroupFilter}
+          placeholder="همه مجموعه‌ها"
+          options={groups.map((group) => ({ value: group.id, label: group.name }))}
+        />
         <Button onClick={openAdd} className="gap-1.5 shrink-0">
           <UserPlus className="h-4 w-4" />
           افزودن عضو
@@ -489,7 +485,7 @@ function MemberFormDialog({
 }: MemberFormDialogProps) {
   const [name, setName] = React.useState(() => editing?.name ?? "");
   const [handle, setHandle] = React.useState(() => editing?.handle ?? "");
-  const [password, setPassword] = React.useState("1234");
+  const [password, setPassword] = React.useState("");
   const [role, setRole] = React.useState(() => editing?.role ?? allowedRoles[0] ?? "");
   const [groupId, setGroupId] = React.useState(() => editing?.groupId ?? member?.groupId ?? "");
   const [supervisorId, setSupervisorId] = React.useState(() => editing?.supervisorId ?? "");
@@ -512,8 +508,8 @@ function MemberFormDialog({
   }, [groups, member]);
 
   async function save() {
-    if (!name.trim() || !handle.trim() || !role) {
-      toast.error("نام، هندل و نقش الزامی است.");
+    if (!name.trim() || !handle.trim() || !role || (!editing && password.length < 8)) {
+      toast.error("نام، هندل، نقش و رمز عبور حداقل ۸ کاراکتری الزامی است.");
       return;
     }
     const finalHandle = handle.trim().startsWith("@") ? handle.trim() : `@${handle.trim()}`;
@@ -527,7 +523,9 @@ function MemberFormDialog({
         body: JSON.stringify({
           name: name.trim(),
           handle: finalHandle,
-          password: password.trim() || "1234",
+          ...(!editing || password.trim()
+            ? { password: password.trim() }
+            : {}),
           role,
           groupId: groupId || null,
           supervisorId: effectiveSupervisorId || null,
@@ -549,7 +547,7 @@ function MemberFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {editing ? (
@@ -667,6 +665,10 @@ function MemberFormDialog({
                 </p>
               )}
             </div>
+          )}
+
+          {editing && (member?.role === "SUPER_ADMIN" || member?.role === "MANAGER") && (
+            <MemberBaleSettings memberId={editing.id} />
           )}
         </div>
 

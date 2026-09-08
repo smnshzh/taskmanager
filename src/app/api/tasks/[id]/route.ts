@@ -3,6 +3,9 @@ import { db } from "@/lib/db";
 import { serializeTask, serializeLog } from "@/lib/serialize";
 import { STATUSES, PRIORITIES, FOLLOW_UP_REASONS } from "@/lib/constants";
 import { requireAuth, getVisibleMemberIds, isHttpError, isManagerOfGroup } from "@/lib/auth";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
+import { enqueueReadyWorkflowSuccessors, enqueueTaskStatusChangedForManagers } from "@/features/notifications/server/notification.events";
+import { connectWorkflowTasks, ensureWorkflowTaskReady } from "@/features/tasks/server/task-workflow.service";
 
 // GET /api/tasks/[id]
 export async function GET(
@@ -17,6 +20,7 @@ export async function GET(
       where: { id },
       include: {
         assignee: true,
+        creator: true,
         group: true,
         referer: true,
         approver: true,
@@ -30,7 +34,7 @@ export async function GET(
 
     // Check visibility
     const visibleIds = await getVisibleMemberIds(me);
-    if (!visibleIds.includes(task.assigneeId)) {
+    if (!visibleIds.includes(task.assigneeId) && task.creatorId !== me.id) {
       return NextResponse.json(
         { error: "شما به این تسک دسترسی ندارید." },
         { status: 403 }
@@ -44,6 +48,9 @@ export async function GET(
   } catch (error: unknown) {
     if (isHttpError(error, 401)) return NextResponse.json({ error: "نشست نامعتبر است." }, { status: 401 });
     if (isHttpError(error, 403)) return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 403 });
+    if (error instanceof Error && error.message.includes("مرحله قبلی گردش‌کار")) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error("Task GET error:", error);
     return NextResponse.json({ error: "خطای سرور" }, { status: 500 });
   }
@@ -56,6 +63,7 @@ export async function PATCH(
 ) {
   try {
     const me = await requireAuth();
+    if (!memberHasPermission(me, "task:update")) return NextResponse.json({ error: "دسترسی ویرایش تسک را ندارید." }, { status: 403 });
     const { id } = await params;
     const body = await req.json();
 
@@ -69,6 +77,7 @@ export async function PATCH(
       deadline,
       link,
       doneDescription,
+      nextTaskId,
     } = body ?? {};
 
     // Lean select — only fields needed for business logic (no relation joins)
@@ -76,6 +85,7 @@ export async function PATCH(
       where: { id },
       select: {
         assigneeId: true,
+        groupId: true,
         status: true,
         startedAt: true,
         doneAt: true,
@@ -153,10 +163,20 @@ export async function PATCH(
     if (link !== undefined) data.link = link ?? null;
     if (doneDescription !== undefined) data.doneDescription = doneDescription ? String(doneDescription).trim() : null;
 
-    const updated = await db.task.update({
-      where: { id },
-      data,
-      include: { assignee: true, group: true, referer: true, approver: true },
+    const updated = await db.$transaction(async (tx) => {
+      if (status === "STARTED") await ensureWorkflowTaskReady(tx, id);
+      if (nextTaskId) {
+        await connectWorkflowTasks(tx, {
+          previousTaskId: id,
+          nextTaskId: String(nextTaskId),
+          createdById: me.id,
+        });
+      }
+      return tx.task.update({
+        where: { id },
+        data,
+        include: { assignee: true, creator: true, group: true, referer: true, approver: true },
+      });
     });
 
     // Log status changes
@@ -169,6 +189,20 @@ export async function PATCH(
           message: `${me.name} وضعیت را به «${statusLabel}» تغییر داد.`,
         },
       });
+      if (status === "STARTED" || status === "DONE") {
+        await db.$transaction((tx) => enqueueTaskStatusChangedForManagers(tx, {
+          taskId: updated.id,
+          taskCode: updated.code,
+          title: updated.title,
+          groupId: existing.groupId,
+          assigneeName: updated.assignee.name,
+          status,
+          changedAt: updated.updatedAt,
+        }));
+        if (status === "DONE") {
+          await db.$transaction((tx) => enqueueReadyWorkflowSuccessors(tx, { completedTaskId: id, changedAt: updated.updatedAt }));
+        }
+      }
     }
 
     // Log follow-up reason
@@ -193,6 +227,12 @@ export async function PATCH(
           type: "NOTE",
           message: `${me.name} مسئول را از ${oldAssigneeName} به ${newAssigneeName} تغییر داد.`,
         },
+      });
+    }
+
+    if (nextTaskId) {
+      await db.followUpLog.create({
+        data: { taskId: id, type: "NOTE", message: `${me.name} این تسک را به مرحله بعدی گردش‌کار متصل کرد.` },
       });
     }
 
@@ -223,7 +263,7 @@ export async function DELETE(
     const me = await requireAuth();
     const { id } = await params;
 
-    if (me.role !== "MANAGER" && me.role !== "SUPER_ADMIN") {
+    if (!memberHasPermission(me, "task:delete")) {
       return NextResponse.json(
         { error: "تنها مدیر یا مدیر کل می‌تواند تسک را حذف کند." },
         { status: 403 }

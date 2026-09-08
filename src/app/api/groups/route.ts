@@ -1,14 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeGroup } from "@/lib/serialize";
-import { requireRole, isHttpError } from "@/lib/auth";
+import { getCurrentMember, getManagedGroupIds, requireRole, requirePermission, isHttpError } from "@/lib/auth";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 
 // GET /api/groups — SUPER_ADMIN and MANAGER can access
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const me = await requireRole("SUPER_ADMIN", "MANAGER");
+    const assignmentScope = req.nextUrl.searchParams.get("scope") === "task-assignees";
+    if (assignmentScope) {
+      const me = await getCurrentMember();
+      if (!me) return NextResponse.json({ error: "نشست نامعتبر است." }, { status: 401 });
+      if (!memberHasPermission(me, "task:create")) {
+        return NextResponse.json({ error: "دسترسی ایجاد تسک را ندارید." }, { status: 403 });
+      }
+    } else {
+      await requireRole("SUPER_ADMIN", "MANAGER");
+    }
+
+    const me = await getCurrentMember();
+    if (!me) return NextResponse.json({ error: "نشست نامعتبر است." }, { status: 401 });
+    const visibleGroupIds = me.role === "MANAGER"
+      ? getManagedGroupIds(me)
+      : assignmentScope && me.groupId
+        ? [me.groupId]
+        : [];
+    const where = me.role === "SUPER_ADMIN"
+      ? undefined
+      : { id: { in: visibleGroupIds } };
 
     const groups = await db.orgGroup.findMany({
+      where,
       include: {
         managers: { include: { member: true }, orderBy: { createdAt: "asc" } },
         _count: { select: { members: true, taskTemplates: true, tasks: true } },
@@ -29,7 +51,7 @@ export async function GET() {
 // Body: { name, code, managerIds?: string[] }
 export async function POST(req: NextRequest) {
   try {
-    await requireRole("SUPER_ADMIN");
+    await requirePermission("group:create");
     const body = await req.json();
     const { name, code, managerIds } = body ?? {};
 

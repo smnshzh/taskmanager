@@ -29,6 +29,7 @@ import {
 import type { SerializedTask } from "@/lib/serialize";
 import { toPersianDigits, isOverdue } from "@/lib/jalali";
 import { cn } from "@/lib/utils";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { toast } from "sonner";
 import {
   CheckCircle2,
@@ -267,7 +268,7 @@ function BlockedReasonDialog({
 
 export function KanbanView() {
   const queryClient = useQueryClient();
-  const [groupFilter, setGroupFilter] = React.useState<string>("all");
+  const [groupFilter, setGroupFilter] = React.useState<string[]>([]);
   const [blockedTaskId, setBlockedTaskId] = React.useState<string>("");
   const [blockedDialogOpen, setBlockedDialogOpen] = React.useState(false);
 
@@ -296,7 +297,7 @@ export function KanbanView() {
     return tasks
       .filter((t) => {
         if (t.status === "DONE") return false;
-        if (groupFilter !== "all" && t.groupName !== groupFilter) return false;
+        if (groupFilter.length > 0 && (!t.groupName || !groupFilter.includes(t.groupName))) return false;
         return true;
       })
       .sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime());
@@ -373,19 +374,13 @@ export function KanbanView() {
           <Filter className="h-3.5 w-3.5" />
           فیلتر مجموعه:
         </div>
-        <Select value={groupFilter} onValueChange={setGroupFilter}>
-          <SelectTrigger className="w-auto min-w-[140px] h-8 text-xs">
-            <SelectValue placeholder="همه مجموعه‌ها" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">همه مجموعه‌ها</SelectItem>
-            {uniqueGroups.map((g) => (
-              <SelectItem key={g} value={g}>
-                {g}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          className="h-8 min-w-[150px]"
+          value={groupFilter}
+          onValueChange={setGroupFilter}
+          placeholder="همه مجموعه‌ها"
+          options={uniqueGroups.map((group) => ({ value: group, label: group }))}
+        />
         <div className="mr-auto text-xs text-muted-foreground">
           {toPersianDigits(filteredTasks.length)} تسک
         </div>

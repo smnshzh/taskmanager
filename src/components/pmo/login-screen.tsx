@@ -11,7 +11,6 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useTMStore, type ViewKey } from "@/lib/pmo-store";
 import {
@@ -22,38 +21,6 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-
-const DEMO_ACCOUNTS = [
-  {
-    label: "مدیر کل",
-    handle: "@admin",
-    password: "admin",
-    role: "SUPER_ADMIN" as const,
-    color: "border-rose-200 bg-rose-50 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/30 dark:hover:bg-rose-950/50",
-  },
-  {
-    label: "مدیر فانتزی",
-    handle: "@mgr1",
-    password: "admin",
-    role: "MANAGER" as const,
-    color: "border-amber-200 bg-amber-50 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:hover:bg-amber-950/50",
-  },
-  {
-    label: "سرپرست",
-    handle: "@sup1",
-    password: "1234",
-    role: "SUPERVISOR" as const,
-    color: "border-sky-200 bg-sky-50 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/30 dark:hover:bg-sky-950/50",
-  },
-  {
-    label: "کارشناس",
-    handle: "@ali",
-    password: "1234",
-    role: "SPECIALIST" as const,
-    color: "hover:bg-muted/50",
-  },
-];
 
 const ROLE_VIEW_MAP: Record<string, ViewKey> = {
   SUPER_ADMIN: "admin",
@@ -83,7 +50,7 @@ export function LoginScreen() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          handle: handle.trim(),
+          handle: handle.trim().startsWith("@") ? handle.trim() : `@${handle.trim()}`,
           password: password.trim(),
         }),
       });
@@ -188,16 +155,6 @@ export function LoginScreen() {
               </Button>
             </form>
 
-            <div className="relative my-4">
-              <Separator />
-              <span className="absolute inset-0 flex items-center justify-center">
-                <span className="bg-card px-2 text-xs text-muted-foreground">
-                  ورود سریع برای دمو
-                </span>
-              </span>
-            </div>
-
-            
           </CardContent>
         </Card>
       </div>

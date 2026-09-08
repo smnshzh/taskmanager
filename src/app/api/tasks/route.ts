@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeTask } from "@/lib/serialize";
-import { getCurrentMember, getVisibleMemberIds, canManage, isManagerOfGroup } from "@/lib/auth";
+import { getCurrentMember, getVisibleMemberIds } from "@/lib/auth";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 import { STATUSES, PRIORITIES } from "@/lib/constants";
 import { toGregorian, toEnglishDigits } from "@/lib/jalali";
+import { getMultiValueFilter, getTaskSearchQuery } from "@/features/tasks/server/task-filter";
+import { enqueueTaskAssigned } from "@/features/notifications/server/notification.events";
+import { connectWorkflowTasks } from "@/features/tasks/server/task-workflow.service";
 
 // Convert "1404/03/15" or "1404-03-15" Jalali string to Date
 function jalaliToDate(str: string): Date | null {
@@ -22,7 +26,7 @@ function isValidPrismaDate(d: Date): boolean {
   return y >= 1900 && y <= 2200;
 }
 
-// GET /api/tasks?status=&groupId=&priority=&source=&overdue=1&dateFrom=&dateTo=&assigneeId=&page=&limit=
+// GET /api/tasks?q=&status=&groupId=&priority=&source=&overdue=1&dateFrom=&dateTo=&dateField=deadline|doneAt&assigneeId=&page=&limit=
 export async function GET(req: NextRequest) {
   try {
     const me = await getCurrentMember();
@@ -31,53 +35,78 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const status = searchParams.get("status");
-    const groupId = searchParams.get("groupId");
-    const priority = searchParams.get("priority");
-    const source = searchParams.get("source");
+    const statuses = getMultiValueFilter(searchParams, "status");
+    const groupIds = getMultiValueFilter(searchParams, "groupId");
+    const priorities = getMultiValueFilter(searchParams, "priority");
+    const sources = getMultiValueFilter(searchParams, "source");
     const overdue = searchParams.get("overdue") === "1";
     const trash = searchParams.get("trash") === "1";
     const dateFromStr = searchParams.get("dateFrom");
     const dateToStr = searchParams.get("dateTo");
-    const assigneeId = searchParams.get("assigneeId");
+    const dateField = searchParams.get("dateField") === "doneAt" ? "doneAt" : "deadline";
+    const assigneeIds = getMultiValueFilter(searchParams, "assigneeId");
+    const search = getTaskSearchQuery(searchParams);
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "12", 10) || 12));
+    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") ?? "12", 10) || 12));
 
     // Role-based visibility
     const visibleIds = await getVisibleMemberIds(me);
 
     const where: Record<string, unknown> = {
-      assigneeId: { in: visibleIds },
+      OR: [
+        { assigneeId: { in: visibleIds } },
+        { creatorId: me.id },
+      ],
       deletedAt: trash ? { not: null } : null,
     };
 
-    if (status) where.status = status;
-    if (groupId) where.groupId = groupId;
-    if (priority) where.priority = priority;
-    if (source) where.source = source;
-    if (assigneeId) where.assigneeId = assigneeId;
+    if (statuses.length > 0) where.status = { in: statuses };
+    if (groupIds.length > 0) where.groupId = { in: groupIds };
+    if (priorities.length > 0) where.priority = { in: priorities };
+    if (sources.length > 0) where.source = { in: sources };
+    if (assigneeIds.length > 0) where.assigneeId = { in: assigneeIds };
+    if (search) {
+      where.AND = [{
+        OR: [
+          { title: { contains: search, mode: "insensitive" } },
+          { code: { contains: search, mode: "insensitive" } },
+          { assignee: { name: { contains: search, mode: "insensitive" } } },
+        ],
+      }];
+    }
 
     // Date range filter on deadline — accept both Gregorian (YYYY-MM-DD) and Jalali
     if (dateFromStr || dateToStr) {
       const dateFilter: Record<string, unknown> = {};
       if (dateFromStr) {
         const d = jalaliToDate(dateFromStr) || new Date(dateFromStr);
-        if (!isNaN(d.getTime()) && isValidPrismaDate(d)) dateFilter.gte = d;
+        if (!isNaN(d.getTime()) && isValidPrismaDate(d)) {
+          // doneAt is grouped for users by Tehran calendar day.
+          dateFilter.gte = dateField === "doneAt"
+            ? new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - 3.5 * 60 * 60 * 1000)
+            : d;
+        }
       }
       if (dateToStr) {
         const d = jalaliToDate(dateToStr) || new Date(dateToStr);
         if (!isNaN(d.getTime()) && isValidPrismaDate(d)) {
-          d.setHours(23, 59, 59, 999);
-          dateFilter.lte = d;
+          if (dateField === "doneAt") {
+            dateFilter.lt = new Date(
+              Date.UTC(d.getFullYear(), d.getMonth(), d.getDate() + 1) - 3.5 * 60 * 60 * 1000
+            );
+          } else {
+            d.setHours(23, 59, 59, 999);
+            dateFilter.lte = d;
+          }
         }
       }
-      if (Object.keys(dateFilter).length > 0) where.deadline = dateFilter;
+      if (Object.keys(dateFilter).length > 0) where[dateField] = dateFilter;
     }
 
     const [tasks, total] = await Promise.all([
       db.task.findMany({
         where,
-        include: { assignee: true, group: true, referer: true, approver: true },
+        include: { assignee: true, creator: true, group: true, referer: true, approver: true },
         orderBy: { deadline: "asc" },
         skip: (page - 1) * limit,
         take: limit,
@@ -110,6 +139,7 @@ export async function POST(req: NextRequest) {
     if (!me) {
       return NextResponse.json({ error: "نشست نامعتبر است." }, { status: 401 });
     }
+    if (!memberHasPermission(me, "task:create")) return NextResponse.json({ error: "دسترسی ایجاد تسک را ندارید." }, { status: 403 });
 
     const body = await req.json();
     const {
@@ -125,6 +155,7 @@ export async function POST(req: NextRequest) {
       letterNumber,
       letterDate,
       refererId,
+      previousTaskId,
     } = body ?? {};
 
     if (!title || !assigneeId || !deadline || !groupId) {
@@ -160,7 +191,7 @@ export async function POST(req: NextRequest) {
       where: { id: assigneeId },
       include: { group: true },
     });
-    if (!assignee) {
+    if (!assignee || !assignee.isActive) {
       return NextResponse.json({ error: "مسئول یافت نشد." }, { status: 400 });
     }
 
@@ -170,38 +201,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "مجموعه یافت نشد." }, { status: 400 });
     }
 
-    // Role-based creation rules
-    if (me.role === "SPECIALIST") {
-      // Specialist can only create for themselves
-      if (assigneeId !== me.id) {
-        return NextResponse.json(
-          { error: "کارشناس تنها می‌تواند برای خود تسک ثبت کند." },
-          { status: 403 }
-        );
-      }
-    } else if (me.role === "SUPERVISOR") {
-      // Supervisor can create for self and subordinates
-      if (assigneeId !== me.id && assignee.supervisorId !== me.id) {
-        return NextResponse.json(
-          { error: "سرپرست تنها می‌تواند برای خود یا زیردستان تسک ثبت کند." },
-          { status: 403 }
-        );
-      }
-      // Supervisor's group must match
-      if (me.groupId !== groupId) {
-        return NextResponse.json(
-          { error: "شما نمی‌توانید برای مجموعه دیگر تسک ثبت کنید." },
-          { status: 403 }
-        );
-      }
-    } else if (me.role === "MANAGER") {
-      // Manager can create for any member in any of their managed groups
-      if (!isManagerOfGroup(me, groupId)) {
-        return NextResponse.json(
-          { error: "مسئول باید عضو مجموعه‌ای باشد که شما مدیریت آن را بر عهده دارید." },
-          { status: 403 }
-        );
-      }
+    if (assignee.groupId !== groupId) {
+      return NextResponse.json(
+        { error: "مسئول انتخاب‌شده عضو این مجموعه نیست." },
+        { status: 400 }
+      );
     }
 
     // Generate next code with retry on unique constraint (race-condition safe)
@@ -227,13 +231,14 @@ export async function POST(req: NextRequest) {
           }
           const code = `TSK-${String(nextNum).padStart(4, "0")}`;
 
-          return tx.task.create({
+          const createdTask = await tx.task.create({
             data: {
               code,
               title: String(title).trim(),
               description: description ?? null,
               groupId,
               assigneeId,
+              creatorId: me.id,
               priority: priority || "MEDIUM",
               deadline: deadlineDate,
               startTime: startDate,
@@ -245,8 +250,26 @@ export async function POST(req: NextRequest) {
               refererId: taskSource === "REFERRED" ? refererId : null,
               approvalStatus: taskSource === "REFERRED" ? "PENDING_APPROVAL" : null,
             },
-            include: { assignee: true, group: true, referer: true, approver: true },
+            include: { assignee: true, creator: true, group: true, referer: true, approver: true },
           });
+          if (previousTaskId) {
+            await connectWorkflowTasks(tx, {
+              previousTaskId: String(previousTaskId),
+              nextTaskId: createdTask.id,
+              createdById: me.id,
+            });
+          }
+          const previousIsDone = previousTaskId
+            ? (await tx.task.findUnique({ where: { id: String(previousTaskId) }, select: { status: true } }))?.status === "DONE"
+            : true;
+          if (previousIsDone) {
+            await enqueueTaskAssigned(tx, {
+              taskId: createdTask.id, taskCode: createdTask.code, title: createdTask.title,
+              memberId: createdTask.assigneeId, actorName: me.name,
+              deadline: createdTask.deadline, updatedAt: createdTask.updatedAt,
+            });
+          }
+          return createdTask;
         });
         break; // success
       } catch (err: unknown) {

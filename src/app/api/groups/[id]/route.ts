@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeGroup, serializeMember } from "@/lib/serialize";
-import { requireAuth, requireRole, isHttpError } from "@/lib/auth";
+import { isManagerOfGroup, requireAuth, requirePermission, isHttpError } from "@/lib/auth";
 
 // GET /api/groups/[id] — with members
 export async function GET(
@@ -12,7 +12,7 @@ export async function GET(
     const me = await requireAuth();
     const { id } = await params;
 
-    if (me.role !== "SUPER_ADMIN" && me.role !== "MANAGER") {
+    if (!isManagerOfGroup(me, id)) {
       return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 403 });
     }
 
@@ -62,7 +62,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole("SUPER_ADMIN");
+    await requirePermission("group:update");
     const { id } = await params;
     const body = await req.json();
     const { name, managerIds } = body ?? {};

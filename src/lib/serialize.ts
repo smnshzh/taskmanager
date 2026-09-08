@@ -46,14 +46,12 @@ export type SerializedMember = {
   supervisorName: string | null;
   taskCount: number;
   activeCount: number;
-  password?: string;
   lastLoginAt: string | null;
 };
 
 export function serializeMember(
   member: MemberWithCount,
-  activeCount: number,
-  includePassword = false
+  activeCount: number
 ): SerializedMember {
   return {
     id: member.id,
@@ -67,7 +65,6 @@ export function serializeMember(
     supervisorName: member.supervisor?.name ?? null,
     taskCount: member._count?.tasks ?? 0,
     activeCount,
-    ...(includePassword ? { password: member.password } : {}),
     lastLoginAt: member.lastLoginAt ? member.lastLoginAt.toISOString() : null,
   };
 }
@@ -147,6 +144,8 @@ export type SerializedTask = {
   assigneeId: string;
   assigneeName: string;
   assigneeHandle: string;
+  creatorId: string | null;
+  creatorName: string | null;
   priority: string;
   status: string;
   letterNumber: string | null;
@@ -184,6 +183,8 @@ export function serializeTask(
     assigneeId: task.assigneeId,
     assigneeName: task.assignee?.name ?? "",
     assigneeHandle: task.assignee?.handle ?? "",
+    creatorId: task.creatorId,
+    creatorName: task.creator?.name ?? null,
     priority: task.priority,
     status: task.status,
     letterNumber: task.letterNumber,

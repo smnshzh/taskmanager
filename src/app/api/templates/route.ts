@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { serializeTaskTemplate } from "@/lib/serialize";
 import { PRIORITIES } from "@/lib/constants";
 import { getCurrentMember, isManagerOfGroup, getManagedGroupIds } from "@/lib/auth";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 
 // GET /api/templates — filtered by group if not SUPER_ADMIN
 export async function GET(req: NextRequest) {
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Only SUPER_ADMIN, MANAGER, SUPERVISOR can create templates
-    if (me.role === "SPECIALIST") {
+    if (!memberHasPermission(me, "template:create")) {
       return NextResponse.json(
         { error: "کارشناس نمی‌تواند الگو ایجاد کند." },
         { status: 403 }

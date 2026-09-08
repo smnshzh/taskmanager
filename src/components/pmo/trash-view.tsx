@@ -156,7 +156,7 @@ export function TrashView() {
                     <TableCell className="font-medium max-w-[220px] truncate">
                       {task.title}
                     </TableCell>
-                    <TableCell className="text-xs">{task.assignee?.name ?? "—"}</TableCell>
+                    <TableCell className="text-xs">{task.assigneeName || "—"}</TableCell>
                     <TableCell>
                       {st && (
                         <Badge

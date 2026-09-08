@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeSchedule } from "@/lib/serialize";
 import { getCurrentMember, isManagerOfGroup, getManagedGroupIds } from "@/lib/auth";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 
 // GET /api/schedules — filtered by group
 export async function GET() {
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "نشست نامعتبر است." }, { status: 401 });
     }
 
-    if (me.role === "SPECIALIST") {
+    if (!memberHasPermission(me, "schedule:create")) {
       return NextResponse.json(
         { error: "کارشناس نمی‌تواند زمان‌بندی ایجاد کند." },
         { status: 403 }

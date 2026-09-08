@@ -82,6 +82,8 @@ interface JalaliDatePickerProps {
   disabled?: boolean;
   /** Additional class for the container */
   className?: string;
+  /** Compact trigger size */
+  size?: "sm" | "default";
 }
 
 export function JalaliDatePicker({
@@ -90,6 +92,7 @@ export function JalaliDatePicker({
   placeholder = "انتخاب تاریخ",
   disabled = false,
   className,
+  size = "default",
 }: JalaliDatePickerProps) {
   const [open, setOpen] = React.useState(false);
 
@@ -109,11 +112,13 @@ export function JalaliDatePicker({
   // Sync when value changes from outside
   React.useEffect(() => {
     const j = gregorianToJalali(value);
-    setSelected(j);
-    if (j) {
-      setViewYear(j[0]);
-      setViewMonth(j[1]);
-    }
+    queueMicrotask(() => {
+      setSelected(j);
+      if (j) {
+        setViewYear(j[0]);
+        setViewMonth(j[1]);
+      }
+    });
   }, [value]);
 
   // Build calendar grid
@@ -178,6 +183,7 @@ export function JalaliDatePicker({
         <PopoverTrigger asChild>
           <Button
             type="button"
+            size={size}
             variant="outline"
             disabled={disabled}
             className={cn(

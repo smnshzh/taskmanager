@@ -1,13 +1,36 @@
 // Re-usable Prisma payload types with common includes
 import { Prisma } from "@prisma/client";
 
-// Member with group, supervisor, and managed groups included
+export const authenticatedMemberSelect = {
+  id: true,
+  name: true,
+  handle: true,
+  role: true,
+  groupId: true,
+  supervisorId: true,
+  avatar: true,
+  createdAt: true,
+  lastLoginAt: true,
+  mustChangePassword: true,
+  isActive: true,
+  group: true,
+  supervisor: {
+    select: {
+      id: true,
+      name: true,
+      handle: true,
+      role: true,
+      groupId: true,
+      supervisorId: true,
+    },
+  },
+  managedGroups: { include: { group: true } },
+  accessGroups: { include: { accessGroup: { select: { id: true, name: true, permissions: true } } } },
+} satisfies Prisma.MemberSelect;
+
+// Authenticated member with safe scalar selection and required relations.
 export type MemberWithRelations = Prisma.MemberGetPayload<{
-  include: {
-    group: true;
-    supervisor: true;
-    managedGroups: { include: { group: true } };
-  };
+  select: typeof authenticatedMemberSelect;
 }>;
 
 // Helper: get group IDs that a member manages (empty array if not a manager)
@@ -28,6 +51,7 @@ export type MemberWithCount = Prisma.MemberGetPayload<{
 export type TaskWithRelations = Prisma.TaskGetPayload<{
   include: {
     assignee: true;
+    creator: true;
     group: true;
     referer: true;
     approver: true;
@@ -38,6 +62,7 @@ export type TaskWithRelations = Prisma.TaskGetPayload<{
 export type TaskWithLogs = Prisma.TaskGetPayload<{
   include: {
     assignee: true;
+    creator: true;
     group: true;
     referer: true;
     approver: true;

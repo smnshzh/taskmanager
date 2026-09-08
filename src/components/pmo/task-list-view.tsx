@@ -59,19 +59,20 @@ import {
   priorityByKey,
   sourceByKey,
 } from "@/lib/constants";
-import type { SerializedTask, SerializedLog } from "@/lib/serialize";
+import type { SerializedTask, SerializedLog, SerializedMember } from "@/lib/serialize";
 import {
   toPersianDigits,
   isOverdue,
   formatJalaliDate,
   formatJalaliLong,
   formatTime,
-  daysBetween,
   toJalali,
 } from "@/lib/jalali";
+import { tehranCalendarDaysBetween } from "@/shared/lib/date/tehran-time";
 import { cn } from "@/lib/utils";
 import { useTMStore } from "@/lib/pmo-store";
 import { JalaliDatePicker } from "@/components/jalali-date-picker";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { toast } from "sonner";
 import {
   CheckCircle2,
@@ -103,8 +104,10 @@ import {
   ChevronsLeftRight,
   Columns3,
   Trash2,
+  GitBranch,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { NewTaskDialog } from "./new-task-dialog";
 
 /* ------------------------------------------------------------------ */
 /*  Badge helpers                                                      */
@@ -205,11 +208,12 @@ export function TaskListView() {
 
   // Filters
   const [search, setSearch] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = React.useState<string>("all");
-  const [sourceFilter, setSourceFilter] = React.useState<string>("all");
-  const [groupFilter, setGroupFilter] = React.useState<string>("all");
-  const [assigneeFilter, setAssigneeFilter] = React.useState<string>("all");
+  const [debouncedSearch, setDebouncedSearch] = React.useState("");
+  const [statusFilter, setStatusFilter] = React.useState<string[]>([]);
+  const [priorityFilter, setPriorityFilter] = React.useState<string[]>([]);
+  const [sourceFilter, setSourceFilter] = React.useState<string[]>([]);
+  const [groupFilter, setGroupFilter] = React.useState<string[]>([]);
+  const [assigneeFilter, setAssigneeFilter] = React.useState<string[]>([]);
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
   const [groupByPerson, setGroupByPerson] = React.useState(false);
@@ -217,9 +221,9 @@ export function TaskListView() {
   const PAGE_SIZE = 12;
 
   // Column visibility
-  type ColKey = "code" | "title" | "group" | "assignee" | "priority" | "source" | "status" | "deadline" | "actions";
+  type ColKey = "code" | "title" | "group" | "assignee" | "creator" | "priority" | "source" | "status" | "deadline" | "actions";
   const defaultCols: Record<ColKey, boolean> = {
-    code: true, title: true, group: true, assignee: true,
+    code: true, title: true, group: true, assignee: true, creator: true,
     priority: true, source: true, status: true, deadline: true, actions: true,
   };
   const [visibleCols, setVisibleCols] = React.useState<Record<ColKey, boolean>>(defaultCols);
@@ -275,37 +279,46 @@ export function TaskListView() {
     }
   };
 
-  // Reset page when filters change
-  React.useEffect(() => { setPage(1); }, [statusFilter, priorityFilter, sourceFilter, groupFilter, assigneeFilter, dateFrom, dateTo]);
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  // Reset page when filters or server-side search change
+  React.useEffect(() => {
+    queueMicrotask(() => setPage(1));
+  }, [statusFilter, priorityFilter, sourceFilter, groupFilter, assigneeFilter, dateFrom, dateTo, debouncedSearch]);
 
   // Build query params
   const queryParams = React.useMemo(() => {
     const params = new URLSearchParams();
-    if (statusFilter !== "all") params.set("status", statusFilter);
-    if (priorityFilter !== "all") params.set("priority", priorityFilter);
-    if (sourceFilter !== "all") params.set("source", sourceFilter);
-    if (groupFilter !== "all") params.set("groupId", groupFilter);
-    if (assigneeFilter !== "all") params.set("assigneeId", assigneeFilter);
+    statusFilter.forEach((value) => params.append("status", value));
+    priorityFilter.forEach((value) => params.append("priority", value));
+    sourceFilter.forEach((value) => params.append("source", value));
+    groupFilter.forEach((value) => params.append("groupId", value));
+    assigneeFilter.forEach((value) => params.append("assigneeId", value));
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
+    if (debouncedSearch) params.set("q", debouncedSearch);
     params.set("page", String(page));
     params.set("limit", String(PAGE_SIZE));
     const qs = params.toString();
     return qs ? `?${qs}` : "";
-  }, [statusFilter, priorityFilter, sourceFilter, groupFilter, assigneeFilter, dateFrom, dateTo, page]);
+  }, [statusFilter, priorityFilter, sourceFilter, groupFilter, assigneeFilter, dateFrom, dateTo, debouncedSearch, page]);
 
   // Fetch tasks
   const { data: tasksData, isLoading } = useQuery({
     queryKey: [
       "tasks",
       "filtered",
-      statusFilter,
-      priorityFilter,
-      sourceFilter,
-      groupFilter,
-      assigneeFilter,
+      statusFilter.join(","),
+      priorityFilter.join(","),
+      sourceFilter.join(","),
+      groupFilter.join(","),
+      assigneeFilter.join(","),
       dateFrom,
       dateTo,
+      debouncedSearch,
       page,
     ],
     queryFn: async () => {
@@ -316,45 +329,51 @@ export function TaskListView() {
   });
   const tasks = tasksData?.tasks ?? [];
   const pagination = tasksData?.pagination;
+  const { data: filterOptionsData } = useQuery({
+    queryKey: ["members", "task-filter-options"],
+    queryFn: async () => {
+      const response = await fetch("/api/members");
+      if (!response.ok) return { members: [] as SerializedMember[] };
+      return (await response.json()) as { members: SerializedMember[] };
+    },
+  });
+  const filterMembers = filterOptionsData?.members ?? [];
 
-  // Client-side search
-  const filteredTasks = React.useMemo(() => {
-    if (!search.trim()) return tasks;
-    const q = search.trim().toLowerCase();
-    return tasks.filter(
-      (t) =>
-        t.title.toLowerCase().includes(q) ||
-        t.code.toLowerCase().includes(q) ||
-        t.assigneeName.toLowerCase().includes(q)
-    );
-  }, [tasks, search]);
+  const filteredTasks = tasks;
 
   // Derive unique groups from fetched tasks
   const uniqueGroups = React.useMemo(() => {
     const set = new Set<string>();
-    tasks.forEach((t) => {
-      if (t.groupId) set.add(t.groupId);
+    filterMembers.forEach((member) => {
+      if (member.groupId) set.add(member.groupId);
     });
-    // Create name->id map from the tasks
     const map = new Map<string, string>();
+    filterMembers.forEach((member) => {
+      if (member.groupName && member.groupId) map.set(member.groupId, member.groupName);
+    });
     tasks.forEach((t) => {
       if (t.groupName && t.groupId && !map.has(t.groupId)) {
         map.set(t.groupId, t.groupName);
       }
     });
     return { ids: Array.from(set), names: map };
-  }, [tasks]);
+  }, [filterMembers, tasks]);
 
   // Derive unique assignees from fetched tasks
   const uniqueAssignees = React.useMemo(() => {
     const map = new Map<string, string>();
-    tasks.forEach((t) => {
-      if (t.assigneeId && t.assigneeName && !map.has(t.assigneeId)) {
-        map.set(t.assigneeId, t.assigneeName);
+    filterMembers.forEach((member) => {
+      if (!map.has(member.id)) {
+        map.set(member.id, member.name);
+      }
+    });
+    tasks.forEach((task) => {
+      if (task.assigneeId && task.assigneeName && !map.has(task.assigneeId)) {
+        map.set(task.assigneeId, task.assigneeName);
       }
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [tasks]);
+  }, [filterMembers, tasks]);
 
   // Group tasks by assignee for per-person view
   const tasksByPerson = React.useMemo(() => {
@@ -379,6 +398,26 @@ export function TaskListView() {
     queryClient.invalidateQueries({ queryKey: ["tasks"] });
   }
 
+  const activeFilterCount =
+    statusFilter.length +
+    priorityFilter.length +
+    sourceFilter.length +
+    groupFilter.length +
+    assigneeFilter.length +
+    Number(Boolean(dateFrom)) +
+    Number(Boolean(dateTo));
+
+  function clearFilters() {
+    setStatusFilter([]);
+    setPriorityFilter([]);
+    setSourceFilter([]);
+    setGroupFilter([]);
+    setAssigneeFilter([]);
+    setDateFrom("");
+    setDateTo("");
+    setSearch("");
+  }
+
   return (
     <div className="flex flex-col h-full gap-3">
       {/* ---- Toolbar ---- */}
@@ -388,7 +427,7 @@ export function TaskListView() {
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="جستجو در عنوان یا کد..."
+              placeholder="جستجو در همه تسک‌ها؛ عنوان، کد یا مسئول..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pr-8 h-9 text-sm"
@@ -398,79 +437,29 @@ export function TaskListView() {
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-2">
             {/* Group */}
-            <Select value={groupFilter} onValueChange={setGroupFilter}>
-              <SelectTrigger className="w-auto min-w-[110px] h-9 text-xs">
-                <SelectValue placeholder="مجموعه" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">همه مجموعه‌ها</SelectItem>
-                {Array.from(uniqueGroups.names.entries()).map(([id, name]) => (
-                  <SelectItem key={id} value={id}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              value={groupFilter}
+              onValueChange={setGroupFilter}
+              placeholder="همه مجموعه‌ها"
+              options={Array.from(uniqueGroups.names.entries()).map(([value, label]) => ({ value, label }))}
+            />
 
             {/* Assignee (نفر) */}
-            <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
-              <SelectTrigger className="w-auto min-w-[110px] h-9 text-xs">
-                <SelectValue placeholder="مسئول" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">همه افراد</SelectItem>
-                {uniqueAssignees.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              value={assigneeFilter}
+              onValueChange={setAssigneeFilter}
+              placeholder="همه افراد"
+              options={uniqueAssignees.map((item) => ({ value: item.id, label: item.name }))}
+            />
 
             {/* Status */}
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-auto min-w-[110px] h-9 text-xs">
-                <SelectValue placeholder="وضعیت" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">همه وضعیت‌ها</SelectItem>
-                {STATUSES.map((s) => (
-                  <SelectItem key={s.key} value={s.key}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect value={statusFilter} onValueChange={setStatusFilter} placeholder="همه وضعیت‌ها" options={STATUSES.map((item) => ({ value: item.key, label: item.label }))} />
 
             {/* Priority */}
-            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-              <SelectTrigger className="w-auto min-w-[100px] h-9 text-xs">
-                <SelectValue placeholder="اولویت" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">همه اولویت‌ها</SelectItem>
-                {PRIORITIES.map((p) => (
-                  <SelectItem key={p.key} value={p.key}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect value={priorityFilter} onValueChange={setPriorityFilter} placeholder="همه اولویت‌ها" options={PRIORITIES.map((item) => ({ value: item.key, label: item.label }))} />
 
             {/* Source */}
-            <Select value={sourceFilter} onValueChange={setSourceFilter}>
-              <SelectTrigger className="w-auto min-w-[100px] h-9 text-xs">
-                <SelectValue placeholder="منبع" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">همه منابع</SelectItem>
-                {TASK_SOURCES.map((s) => (
-                  <SelectItem key={s.key} value={s.key}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect value={sourceFilter} onValueChange={setSourceFilter} placeholder="همه منابع" options={TASK_SOURCES.map((item) => ({ value: item.key, label: item.label }))} />
 
             {/* Date from (Jalali) */}
             <Input
@@ -504,6 +493,20 @@ export function TaskListView() {
                 <CalendarClock className="h-3.5 w-3.5" />
               </Button>
             )}
+            {activeFilterCount > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-9 gap-1.5 text-xs text-rose-600 hover:text-rose-700"
+                onClick={clearFilters}
+              >
+                <X className="h-3.5 w-3.5" />
+                پاک کردن همه
+                <Badge variant="secondary" className="h-5 px-1 text-[10px]">
+                  {toPersianDigits(activeFilterCount)}
+                </Badge>
+              </Button>
+            )}
           </div>
 
           {/* Count + Group-by toggle + Column toggle */}
@@ -522,9 +525,9 @@ export function TaskListView() {
               </Button>
               {colMenuOpen && (
                 <div className="absolute top-full mt-1 right-0 z-50 bg-popover border rounded-lg shadow-md p-2 min-w-[160px]">
-                  {(["code", "title", "group", "assignee", "priority", "source", "status", "deadline"] as ColKey[]).map((col) => {
+                  {(["code", "title", "group", "assignee", "creator", "priority", "source", "status", "deadline"] as ColKey[]).map((col) => {
                     const labels: Record<string, string> = {
-                      code: "کد", title: "عنوان", group: "مجموعه", assignee: "مسئول",
+                      code: "کد", title: "عنوان", group: "مجموعه", assignee: "مسئول", creator: "تعریف‌کننده",
                       priority: "اولویت", source: "منبع", status: "وضعیت", deadline: "ددلاین",
                     };
                     return (
@@ -658,6 +661,7 @@ export function TaskListView() {
                         <TableBody>
                           {group.tasks.map((task) => {
                             const overdue = isOverdue(new Date(task.deadline), task.status);
+                            const overdueDays = overdue ? tehranCalendarDaysBetween(new Date(task.deadline)) : 0;
                             return (
                               <TableRow key={task.id} className="group">
                                 <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
@@ -686,7 +690,7 @@ export function TaskListView() {
                                   <StatusBadge status={task.status} />
                                 </TableCell>
                                 <TableCell className="hidden xl:table-cell whitespace-nowrap">
-                                  <span
+                                  <div
                                     className={cn(
                                       "text-xs",
                                       overdue
@@ -695,7 +699,8 @@ export function TaskListView() {
                                     )}
                                   >
                                     {formatJalaliDate(new Date(task.deadline))}
-                                  </span>
+                                    {overdue && <div className="mt-0.5 text-[10px]">{toPersianDigits(overdueDays)} روز گذشته</div>}
+                                  </div>
                                 </TableCell>
                                 <TableCell className="text-center">
                                   <Button
@@ -729,6 +734,7 @@ export function TaskListView() {
                   {visibleCols.title && <TableHead className="text-xs whitespace-nowrap min-w-[160px]">عنوان</TableHead>}
                   {visibleCols.group && <TableHead className="text-xs whitespace-nowrap">مجموعه</TableHead>}
                   {visibleCols.assignee && <TableHead className="text-xs whitespace-nowrap">مسئول</TableHead>}
+                  {visibleCols.creator && <TableHead className="text-xs whitespace-nowrap">تعریف‌کننده</TableHead>}
                   {visibleCols.priority && <TableHead className="text-xs whitespace-nowrap">اولویت</TableHead>}
                   {visibleCols.source && <TableHead className="text-xs whitespace-nowrap">منبع</TableHead>}
                   {visibleCols.status && <TableHead className="text-xs whitespace-nowrap">وضعیت</TableHead>}
@@ -739,21 +745,31 @@ export function TaskListView() {
               <TableBody>
                 {filteredTasks.map((task) => {
                   const overdue = isOverdue(new Date(task.deadline), task.status);
+                  const overdueDays = overdue ? tehranCalendarDaysBetween(new Date(task.deadline)) : 0;
                   return (
-                    <TableRow key={task.id} className="group">
+                    <TableRow
+                      key={task.id}
+                      className={cn(
+                        "group cursor-pointer transition-colors hover:bg-muted/60",
+                        overdue && "border-r-2 border-r-rose-500"
+                      )}
+                      onClick={() => openDetail(task)}
+                    >
                       {visibleCols.code && (
                         <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
                           {task.code}
                         </TableCell>
                       )}
                       {visibleCols.title && (
-                        <TableCell
-                          className="text-sm font-medium max-w-[200px] sm:max-w-[280px] cursor-pointer truncate"
-                          onClick={() => openDetail(task)}
-                        >
-                          <span className="hover:text-primary transition-colors">
+                        <TableCell className="max-w-[220px] sm:max-w-[340px]">
+                          <div className="text-sm font-medium leading-5 group-hover:text-primary transition-colors line-clamp-2">
                             {task.title}
-                          </span>
+                          </div>
+                          {task.description && (
+                            <div className="mt-0.5 truncate text-[11px] font-normal text-muted-foreground">
+                              {task.description.replace(/[#*_>`]/g, "").slice(0, 90)}
+                            </div>
+                          )}
                           {overdue && (
                             <span className="inline-flex items-center gap-0.5 mr-1.5 text-[10px] text-rose-600 dark:text-rose-400">
                               <AlertTriangle className="h-2.5 w-2.5" />
@@ -776,6 +792,11 @@ export function TaskListView() {
                           </div>
                         </TableCell>
                       )}
+                      {visibleCols.creator && (
+                        <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                          {task.creatorName ?? "نامشخص (تسک قدیمی)"}
+                        </TableCell>
+                      )}
                       {visibleCols.priority && (
                         <TableCell>
                           <PriorityBadge priority={task.priority} />
@@ -793,7 +814,7 @@ export function TaskListView() {
                       )}
                       {visibleCols.deadline && (
                         <TableCell className="whitespace-nowrap">
-                          <span
+                          <div
                             className={cn(
                               "text-xs",
                               overdue
@@ -802,7 +823,8 @@ export function TaskListView() {
                             )}
                           >
                             {formatJalaliDate(new Date(task.deadline))}
-                          </span>
+                            {overdue && <div className="mt-0.5 text-[10px]">{toPersianDigits(overdueDays)} روز گذشته</div>}
+                          </div>
                         </TableCell>
                       )}
                       {visibleCols.actions && (
@@ -811,7 +833,10 @@ export function TaskListView() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8"
-                            onClick={() => openDetail(task)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openDetail(task);
+                            }}
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
@@ -907,6 +932,7 @@ function TaskDetailSheet({
   onOpenChange: (v: boolean) => void;
   onUpdated: () => void;
 }) {
+  const member = useTMStore((s) => s.member);
   const [logs, setLogs] = React.useState<SerializedLog[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [showReasonPicker, setShowReasonPicker] = React.useState(false);
@@ -920,15 +946,20 @@ function TaskDetailSheet({
   const [editDeadline, setEditDeadline] = React.useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [workflow, setWorkflow] = React.useState<{ previous: Array<{ id: string; code: string; title: string; status: string }>; next: Array<{ id: string; code: string; title: string; status: string }> }>({ previous: [], next: [] });
+  const [showNextTaskDialog, setShowNextTaskDialog] = React.useState(false);
 
   React.useEffect(() => {
     if (!task) return;
     let cancelled = false;
-    fetch(`/api/tasks/${task.id}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setLogs(d.logs ?? []);
-      })
+    Promise.all([
+      fetch(`/api/tasks/${task.id}`).then((r) => r.json()),
+      fetch(`/api/tasks/${task.id}/workflow`).then((r) => r.json()),
+    ]).then(([detail, workflowData]) => {
+      if (cancelled) return;
+      setLogs(detail.logs ?? []);
+      setWorkflow(workflowData.workflow ?? { previous: [], next: [] });
+    })
       .catch(() => {
         if (!cancelled) setLogs([]);
       });
@@ -951,9 +982,17 @@ function TaskDetailSheet({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status, ...extra }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error ?? "به‌روزرسانی وضعیت ناموفق بود.");
+      }
       const data = await res.json();
       setLogs(data.logs ?? []);
+      if (extra?.nextTaskId) {
+        const workflowRes = await fetch(`/api/tasks/${task.id}/workflow`);
+        const workflowData = await workflowRes.json();
+        setWorkflow(workflowData.workflow ?? { previous: [], next: [] });
+      }
       toast.success(
         status === "STARTED"
           ? "شروع کردم — وضعیت به‌روزرسانی شد."
@@ -963,8 +1002,8 @@ function TaskDetailSheet({
       );
       if (status === "DONE") setShowArchivePrompt(true);
       onUpdated();
-    } catch {
-      toast.error("به‌روزرسانی وضعیت ناموفق بود.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "به‌روزرسانی وضعیت ناموفق بود.");
     } finally {
       setBusy(false);
     }
@@ -1049,8 +1088,7 @@ function TaskDetailSheet({
     }
   }
 
-  const member = useTMStore((s) => s.member);
-  const canDelete = member?.role === "MANAGER" || member?.role === "SUPER_ADMIN";
+  const canDelete = member?.permissions.includes("task:delete") ?? false;
 
   return (
     <>
@@ -1180,6 +1218,11 @@ function TaskDetailSheet({
                 value={`${task.assigneeName} (${task.assigneeHandle})`}
               />
               <MetaRow
+                icon={<User className="h-4 w-4" />}
+                label="تعریف‌کننده"
+                value={task.creatorName ?? "نامشخص (تسک قدیمی)"}
+              />
+              <MetaRow
                 icon={<CalendarClock className="h-4 w-4" />}
                 label="ددلاین"
                 value={`${formatJalaliLong(dl)} — ${toPersianDigits(formatTime(dl))}`}
@@ -1238,6 +1281,18 @@ function TaskDetailSheet({
               </div>
             )}
 
+            <div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 dark:border-sky-800 dark:bg-sky-950/20 space-y-2">
+              <p className="text-xs font-semibold flex items-center gap-1.5"><GitBranch className="h-4 w-4" />گردش‌کار این تسک</p>
+              {workflow.previous.length === 0 && workflow.next.length === 0 ? (
+                <p className="text-xs text-muted-foreground">هنوز ارتباطی ثبت نشده است.</p>
+              ) : (
+                <div className="space-y-2 text-xs">
+                  {workflow.previous.map((item) => <div key={item.id}>مرحله قبلی: <b>{item.code}</b> — {item.title}</div>)}
+                  {workflow.next.map((item) => <div key={item.id}>مرحله بعدی: <b>{item.code}</b> — {item.title}</div>)}
+                </div>
+              )}
+            </div>
+
             {task.link && (
               <a
                 href={task.link}
@@ -1254,7 +1309,7 @@ function TaskDetailSheet({
               <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300">
                 این تسک{" "}
                 {toPersianDigits(
-                  Math.abs(daysBetween(dl, new Date()))
+                  tehranCalendarDaysBetween(dl)
                 )}{" "}
                 روز از ددلاین گذشته است.
               </div>
@@ -1304,21 +1359,11 @@ function TaskDetailSheet({
                   <div className="flex items-start gap-2 text-sm text-emerald-800 dark:text-emerald-200">
                     <FileArchive className="h-4 w-4 mt-0.5 shrink-0" />
                     <div>
-                      <p className="font-medium">تسک انجام شد.</p>
+                      <p className="font-medium">این تسک دارای گردش‌کار است؟</p>
                       <p className="mt-1 text-emerald-700/80 dark:text-emerald-300/80">
-                        آخرین تغییرات یا فایل را ارسال کنید تا در آرشیو قرار گیرد.
+                        در صورت انتخاب «بله»، تسک مرحله بعد را برای فرد یا واحد مقصد تعریف کنید.
                       </p>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="mt-2"
-                        onClick={() => {
-                          setShowArchivePrompt(false);
-                          toast.success("ثبت شد.");
-                        }}
-                      >
-                        تأیید
-                      </Button>
+                      <div className="mt-3 flex gap-2"><Button size="sm" onClick={() => { setShowArchivePrompt(false); setShowNextTaskDialog(true); }}>بله، تعریف مرحله بعد</Button><Button size="sm" variant="outline" onClick={() => setShowArchivePrompt(false)}>خیر، پایان گردش‌کار</Button></div>
                     </div>
                   </div>
                 </div>
@@ -1459,6 +1504,7 @@ function TaskDetailSheet({
         </ScrollArea>
       </SheetContent>
     </Sheet>
+    <NewTaskDialog open={showNextTaskDialog} onOpenChange={setShowNextTaskDialog} initialPreviousTask={{ id: task.id, code: task.code, title: task.title }} onCreated={() => { setShowNextTaskDialog(false); onUpdated(); }} />
 
     {/* Delete confirmation */}
     <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>

@@ -14,17 +14,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LoginScreen } from "./login-screen";
+import { ForcedPasswordChange } from "./forced-password-change";
 import { ThemeToggle } from "./theme-toggle";
 import { NewTaskDialog } from "./new-task-dialog";
 import { OverviewView } from "./overview-view";
 import { KanbanView } from "./kanban-view";
 import { TaskListView } from "./task-list-view";
+import { WorkflowView } from "./workflow-view";
 import { SchedulerView } from "./scheduler-view";
 import { ReferredView } from "./referred-view";
 import { MyTasksView } from "./my-tasks-view";
 import { MembersView } from "./members-view";
 import { GroupsView } from "./groups-view";
+import { AccessGroupsView } from "./access-groups-view";
 import { AdminView } from "./admin-view";
+import { BaleManagementView } from "./bale-management-view";
 import { TrashView } from "./trash-view";
 import { DoneTasksView } from "./done-tasks-view";
 import { useTMStore, type ViewKey } from "@/lib/pmo-store";
@@ -51,6 +55,8 @@ import {
   Crown,
   Trash2,
   ClipboardCheck,
+  GitBranch,
+  MessageCircle,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -63,20 +69,23 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string }>;
   desc: string;
   roles?: string[];
+  permission?: string;
 };
 
 const ALL_NAV: NavItem[] = [
-  { key: "overview", label: "داشبورد", icon: LayoutDashboard, desc: "نمای کلی و شاخص‌ها" },
-  { key: "kanban", label: "کانبان", icon: KanbanSquare, desc: "نمودار کانبان تسک‌ها" },
-  { key: "list", label: "لیست تسک‌ها", icon: ListChecks, desc: "جدول با فیلترهای پیشرفته" },
-  { key: "scheduler", label: "زمان‌بندی", icon: CalendarClock, desc: "زمان‌بندی و قالب‌های تسک", roles: ["SUPER_ADMIN", "MANAGER", "SUPERVISOR"] },
-  { key: "referred", label: "ارجاع نامه‌ای", icon: FileText, desc: "تسک‌های ارجاعی" },
-  { key: "mytasks", label: "کارهای من", icon: CheckSquare, desc: "تسک‌های شخصی من" },
-  { key: "members", label: "اعضا", icon: Users, desc: "مدیریت اعضا", roles: ["MANAGER", "SUPERVISOR"] },
-  { key: "groups", label: "مجموعه‌ها", icon: Building2, desc: "مدیریت مجموعه‌های سازمانی", roles: ["SUPER_ADMIN"] },
-  { key: "donetasks", label: "انجام‌شده", icon: ClipboardCheck, desc: "گزارش کارهای انجام‌شده" },
-  { key: "trash", label: "سطل زباله", icon: Trash2, desc: "تسک‌های حذف‌شده", roles: ["SUPER_ADMIN", "MANAGER"] },
-  { key: "admin", label: "مدیریت سیستم", icon: Settings, desc: "تنظیمات و مدیریت سیستم", roles: ["SUPER_ADMIN"] },
+  { key: "overview", label: "داشبورد", icon: LayoutDashboard, desc: "نمای کلی و شاخص‌ها", permission: "panel:overview" },
+  { key: "kanban", label: "کانبان", icon: KanbanSquare, desc: "نمودار کانبان تسک‌ها", permission: "panel:kanban" },
+  { key: "list", label: "لیست تسک‌ها", icon: ListChecks, desc: "جدول با فیلترهای پیشرفته", permission: "panel:task-list" },
+  { key: "workflow", label: "گردش‌کار", icon: GitBranch, desc: "ساخت و مشاهده ارتباط مرحله‌ای تسک‌ها", permission: "panel:workflow" },
+  { key: "scheduler", label: "زمان‌بندی", icon: CalendarClock, desc: "زمان‌بندی و قالب‌های تسک", permission: "panel:scheduler" },
+  { key: "referred", label: "ارجاع نامه‌ای", icon: FileText, desc: "تسک‌های ارجاعی", permission: "panel:referrals" },
+  { key: "mytasks", label: "کارهای من", icon: CheckSquare, desc: "تسک‌های شخصی من", permission: "panel:my-tasks" },
+  { key: "members", label: "اعضا", icon: Users, desc: "مدیریت اعضا", permission: "panel:members" },
+  { key: "groups", label: "مجموعه‌ها", icon: Building2, desc: "مدیریت مجموعه‌های سازمانی", permission: "panel:groups" },
+  { key: "donetasks", label: "انجام‌شده", icon: ClipboardCheck, desc: "گزارش کارهای انجام‌شده", permission: "panel:done-tasks" },
+  { key: "trash", label: "سطل زباله", icon: Trash2, desc: "تسک‌های حذف‌شده", permission: "panel:trash" },
+  { key: "bale-management", label: "مدیریت پیام‌رسان بله", icon: MessageCircle, desc: "گروه‌ها، اعلان‌های خودکار و لاگ ارسال‌ها", permission: "panel:admin" },
+  { key: "admin", label: "مدیریت سیستم", icon: Settings, desc: "تنظیمات و مدیریت دسترسی", permission: "panel:admin" },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -196,13 +205,24 @@ export function DashboardShell() {
     return <LoginScreen />;
   }
 
+  if (member.mustChangePassword) {
+    return <ForcedPasswordChange />;
+  }
+
   /* ---- Filtered nav ---- */
   const role = member.role;
   const nav = ALL_NAV.filter(
-    (n) => !n.roles || n.roles.includes(role)
+    (n) => (!n.roles || n.roles.includes(role)) && (!n.permission || member.permissions.includes(n.permission))
   );
-  const currentNav = nav.find((n) => n.key === view) ?? nav[0];
-  const canCreateTask = role !== "SPECIALIST";
+  const currentNav: NavItem = view === "access-groups"
+    ? {
+        key: "access-groups" as const,
+        label: "مدیریت دسترسی‌ها",
+        icon: Settings,
+        desc: "مدیریت گروه‌های دسترسی و مجوزهای اعضا",
+      }
+    : nav.find((n) => n.key === view) ?? nav[0];
+  const canCreateTask = member.permissions.includes("task:create");
 
   /* ---- Role badge ---- */
   const roleInfo = roleByKey(role);
@@ -455,18 +475,17 @@ export function DashboardShell() {
             {view === "overview" && <OverviewView />}
             {view === "kanban" && <KanbanView />}
             {view === "list" && <TaskListView />}
-            {view === "scheduler" && (
-              (role === "SUPER_ADMIN" || role === "MANAGER" || role === "SUPERVISOR") && (
-                <SchedulerView />
-              )
-            )}
+            {view === "workflow" && <WorkflowView />}
+            {view === "scheduler" && member.permissions.includes("panel:scheduler") && <SchedulerView />}
             {view === "referred" && <ReferredView />}
             {view === "mytasks" && <MyTasksView />}
-            {view === "members" && (role === "SUPER_ADMIN" || role === "MANAGER") && <MembersView />}
-            {view === "groups" && role === "SUPER_ADMIN" && <GroupsView />}
+            {view === "members" && member.permissions.includes("panel:members") && <MembersView />}
+            {view === "groups" && member.permissions.includes("panel:groups") && <GroupsView />}
+            {view === "access-groups" && member.permissions.includes("access-group:manage") && <AccessGroupsView />}
             {view === "donetasks" && <DoneTasksView />}
-            {view === "trash" && (role === "SUPER_ADMIN" || role === "MANAGER") && <TrashView />}
-            {view === "admin" && role === "SUPER_ADMIN" && <AdminView />}
+            {view === "trash" && member.permissions.includes("panel:trash") && <TrashView />}
+            {view === "bale-management" && member.permissions.includes("panel:admin") && <BaleManagementView />}
+            {view === "admin" && member.permissions.includes("panel:admin") && <AdminView />}
           </div>
         </main>
       </div>

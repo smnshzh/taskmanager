@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { serializeMember } from "@/lib/serialize";
 import { ROLES } from "@/lib/constants";
 import { getCurrentMember, requireRole, getVisibleMemberIds, canManage, isManagerOfGroup } from "@/lib/auth";
+import { hashPassword } from "@/features/auth/server/password";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 
 // GET /api/members/[id]
 export async function GET(
@@ -77,6 +79,7 @@ export async function PATCH(
     if (!existing) {
       return NextResponse.json({ error: "عضو یافت نشد." }, { status: 404 });
     }
+    if (id !== me.id && !memberHasPermission(me, "member:update")) return NextResponse.json({ error: "دسترسی ویرایش عضو را ندارید." }, { status: 403 });
 
     const data: Record<string, unknown> = {};
 
@@ -99,12 +102,19 @@ export async function PATCH(
           { status: 403 }
         );
       }
-      data.password = String(password);
+      if (String(password).length < 8) {
+        return NextResponse.json(
+          { error: "رمز عبور باید حداقل ۸ کاراکتر باشد." },
+          { status: 400 }
+        );
+      }
+      data.password = await hashPassword(String(password));
+      data.mustChangePassword = id !== me.id;
     }
 
     // Role change: only SUPER_ADMIN
     if (role !== undefined) {
-      if (me.role !== "SUPER_ADMIN") {
+      if (!memberHasPermission(me, "member:change-role")) {
         return NextResponse.json(
           { error: "تنها مدیر کل می‌تواند نقش را تغییر دهد." },
           { status: 403 }
@@ -118,7 +128,7 @@ export async function PATCH(
 
     // Group change: only SUPER_ADMIN
     if (groupId !== undefined) {
-      if (me.role !== "SUPER_ADMIN") {
+      if (!memberHasPermission(me, "member:update")) {
         return NextResponse.json(
           { error: "تنها مدیر کل می‌تواند گروه را تغییر دهد." },
           { status: 403 }
@@ -160,6 +170,22 @@ export async function PATCH(
       },
     });
 
+    if (password !== undefined) {
+      await db.session.updateMany({
+        where: { memberId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await db.auditLog.create({
+        data: {
+          actorId: me.id,
+          action: "PASSWORD_CHANGE",
+          entityType: "Member",
+          entityId: id,
+          result: "SUCCESS",
+        },
+      });
+    }
+
     const activeCount = await db.task.count({
       where: {
         assigneeId: id,
@@ -190,7 +216,7 @@ export async function DELETE(
 
     const { id } = await params;
 
-    if (me.role !== "SUPER_ADMIN" && me.role !== "MANAGER") {
+    if (!memberHasPermission(me, "member:delete")) {
       return NextResponse.json(
         { error: "شما دسترسی حذف عضو را ندارید." },
         { status: 403 }

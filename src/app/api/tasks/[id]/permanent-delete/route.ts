@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth, isManagerOfGroup } from "@/lib/auth";
 import { isHttpError } from "@/lib/auth";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 
 // DELETE /api/tasks/[id]/permanent-delete — Permanently delete a trashed task
 export async function DELETE(
@@ -12,7 +13,7 @@ export async function DELETE(
     const me = await requireAuth();
     const { id } = await params;
 
-    if (me.role !== "MANAGER" && me.role !== "SUPER_ADMIN") {
+    if (!memberHasPermission(me, "task:delete-permanently")) {
       return NextResponse.json(
         { error: "تنها مدیر یا مدیر کل می‌تواند تسک را به‌صورت دائم حذف کند." },
         { status: 403 }

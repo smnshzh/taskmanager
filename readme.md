@@ -35,11 +35,9 @@ The application provides role-based access control, task assignment, reporting c
 - PostgreSQL
 
 ### Deployment
-- Cloudflare Workers
-
-## 📸 Live Demo
-
-https://taskmanager.barakasaleplan.workers.dev/
+- Next.js standalone server managed by PM2
+- Caddy reverse proxy
+- PostgreSQL migrations managed by Prisma Migrate
 
 ## 💻 Repository
 
@@ -66,8 +64,10 @@ Create a `.env` file:
 
 ```env
 DATABASE_URL="postgresql://username:password@localhost:5432/taskmanager"
-NEXTAUTH_SECRET="your-secret"
-NEXTAUTH_URL="http://localhost:3000"
+SESSION_SECRET="replace-with-a-random-secret"
+APP_BASE_URL="http://localhost:8502"
+APP_TIMEZONE="Asia/Tehran"
+PORT="8502"
 ```
 
 ### Run database migrations
@@ -97,7 +97,7 @@ npm run dev
 Application will be available at:
 
 ```text
-http://localhost:3000
+http://localhost:8502
 ```
 
 ## 🗄 Database
@@ -111,6 +111,26 @@ npx prisma studio
 npx prisma generate
 npx prisma migrate dev
 ```
+
+Do not use `prisma db push` for production. Existing installations are
+baselined and production changes must use:
+
+```bash
+npm run db:migrate:deploy
+```
+
+## Production
+
+The supported deployment flow is:
+
+```bash
+scripts/deploy.sh
+```
+
+It installs locked dependencies, runs lint, typecheck and tests, generates the
+Prisma client, builds the standalone server, deploys migrations, reloads PM2,
+and verifies `/api/health`. PM2 configuration lives in
+`ecosystem.config.cjs`; the production port is `8502`.
 
 ## 📊 Use Cases
 

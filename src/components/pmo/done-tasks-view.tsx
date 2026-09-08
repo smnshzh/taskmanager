@@ -213,6 +213,7 @@ export function DoneTasksView() {
         status: "DONE",
         dateFrom: dateFromStr,
         dateTo: dateToStr,
+        dateField: "doneAt",
         limit: "200",
       });
       const r = await fetch(`/api/tasks?${params}`);

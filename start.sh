@@ -1,3 +1,7 @@
-#!/bin/bash
-cd /home/z/my-project/taskmanager
-DATABASE_URL="file:/home/z/my-project/taskmanager/db/custom.db" npx next dev -p 3000
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$PROJECT_DIR"
+
+exec env NODE_ENV=production PORT="${PORT:-8502}" node .next/standalone/server.js

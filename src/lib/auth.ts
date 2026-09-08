@@ -1,44 +1,42 @@
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import type { MemberWithRelations } from "@/lib/prisma-types";
-import { getManagedGroupIds } from "@/lib/prisma-types";
+import { authenticatedMemberSelect, getManagedGroupIds } from "@/lib/prisma-types";
+import { hashSessionToken } from "@/features/auth/server/session";
+import { memberHasPermission, type PermissionKey } from "@/features/access-control/server/permissions";
 
-export const SESSION_COOKIE = "tm_session";
-
-// Simple in-memory cache for getCurrentMember (per-request lifecycle in serverless)
-const memberCache = new Map<string, { member: MemberWithRelations; ts: number }>();
-const CACHE_TTL = 5_000; // 5 seconds
+export const SESSION_COOKIE =
+  process.env.SESSION_COOKIE_NAME?.trim() || "tm_session";
 
 export async function getCurrentMember(): Promise<MemberWithRelations | null> {
   const store = await cookies();
-  const memberId = store.get(SESSION_COOKIE)?.value;
-  if (!memberId) return null;
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (!token) return null;
 
-  // Check cache
-  const cached = memberCache.get(memberId);
-  if (cached && Date.now() - cached.ts < CACHE_TTL) {
-    return cached.member;
-  }
-
-  const member = await db.member.findUnique({
-    where: { id: memberId },
-    include: { group: true, supervisor: true, managedGroups: { include: { group: true } } },
+  const session = await db.session.findUnique({
+    where: { tokenHash: hashSessionToken(token) },
+    select: {
+      expiresAt: true,
+      revokedAt: true,
+      member: { select: authenticatedMemberSelect },
+    },
   });
 
-  if (member) {
-    memberCache.set(memberId, { member, ts: Date.now() });
+  if (
+    !session ||
+    session.revokedAt ||
+    session.expiresAt.getTime() <= Date.now() ||
+    !session.member.isActive
+  ) {
+    return null;
   }
 
-  return member ?? null;
+  return session.member;
 }
 
-// Invalidate cache when member is updated
-export function invalidateMemberCache(memberId?: string) {
-  if (memberId) {
-    memberCache.delete(memberId);
-  } else {
-    memberCache.clear();
-  }
+// Kept as a compatibility no-op while callers migrate away from cache concerns.
+export function invalidateMemberCache(_memberId?: string) {
+  return;
 }
 
 export async function requireAuth(): Promise<MemberWithRelations> {
@@ -126,4 +124,14 @@ export { getManagedGroupIds };
 // Type-safe error status check
 export function isHttpError(error: unknown, status: number): boolean {
   return error instanceof Error && (error as Error & { status?: number }).status === status;
+}
+
+export async function requirePermission(permission: PermissionKey): Promise<MemberWithRelations> {
+  const member = await requireAuth();
+  if (!memberHasPermission(member, permission)) {
+    const err = new Error("FORBIDDEN") as Error & { status?: number };
+    err.status = 403;
+    throw err;
+  }
+  return member;
 }

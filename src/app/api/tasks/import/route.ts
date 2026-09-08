@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentMember } from "@/lib/auth";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 import { toGregorian, toEnglishDigits } from "@/lib/jalali";
 import * as XLSX from "xlsx";
+import { enqueueTaskAssigned } from "@/features/notifications/server/notification.events";
 
 // Priority label to key mapping (Persian)
 const PRIORITY_MAP: Record<string, string> = {
@@ -89,7 +91,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "نشست نامعتبر است." }, { status: 401 });
     }
 
-    if (me.role === "SPECIALIST") {
+    if (!memberHasPermission(me, "task:import")) {
       return NextResponse.json(
         { error: "کارشناس نمی‌تواند فایل وارد کند." },
         { status: 403 }
@@ -323,13 +325,14 @@ export async function POST(req: NextRequest) {
           }
           const code = `TSK-${String(nextNum).padStart(4, "0")}`;
 
-          return tx.task.create({
+          const createdTask = await tx.task.create({
             data: {
               code,
               title,
               description: description || null,
               groupId: group.id,
               assigneeId: assignee.id,
+              creatorId: me.id,
               priority,
               deadline: deadlineDate,
               startTime: startDate,
@@ -341,8 +344,18 @@ export async function POST(req: NextRequest) {
               refererId: source === "REFERRED" ? refererId : null,
               approvalStatus: source === "REFERRED" ? "PENDING_APPROVAL" : null,
             },
-            include: { assignee: true, group: true, referer: true, approver: true },
+            include: { assignee: true, creator: true, group: true, referer: true, approver: true },
           });
+          await enqueueTaskAssigned(tx, {
+            taskId: createdTask.id,
+            taskCode: createdTask.code,
+            title: createdTask.title,
+            memberId: createdTask.assigneeId,
+            actorName: me.name,
+            deadline: createdTask.deadline,
+            updatedAt: createdTask.updatedAt,
+          });
+          return createdTask;
         });
 
         // Log

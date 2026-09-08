@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { serializeTask, serializeLog } from "@/lib/serialize";
 import { requireAuth, getVisibleMemberIds, isManagerOfGroup } from "@/lib/auth";
 import { isHttpError } from "@/lib/auth";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 
 // PATCH /api/tasks/[id]/restore — Restore soft-deleted task from trash
 export async function PATCH(
@@ -13,7 +14,7 @@ export async function PATCH(
     const me = await requireAuth();
     const { id } = await params;
 
-    if (me.role !== "MANAGER" && me.role !== "SUPER_ADMIN") {
+    if (!memberHasPermission(me, "task:restore")) {
       return NextResponse.json(
         { error: "تنها مدیر یا مدیر کل می‌تواند تسک را بازیابی کند." },
         { status: 403 }
@@ -38,7 +39,7 @@ export async function PATCH(
     const updated = await db.task.update({
       where: { id },
       data: { deletedAt: null },
-      include: { assignee: true, group: true, referer: true, approver: true },
+      include: { assignee: true, creator: true, group: true, referer: true, approver: true },
     });
 
     await db.followUpLog.create({

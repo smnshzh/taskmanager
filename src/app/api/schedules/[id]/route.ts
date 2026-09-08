@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeSchedule } from "@/lib/serialize";
 import { getCurrentMember, isManagerOfGroup } from "@/lib/auth";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 
 // DELETE /api/schedules/[id]
 export async function DELETE(
@@ -14,7 +15,7 @@ export async function DELETE(
       return NextResponse.json({ error: "نشست نامعتبر است." }, { status: 401 });
     }
 
-    if (me.role === "SPECIALIST") {
+    if (!memberHasPermission(me, "schedule:delete")) {
       return NextResponse.json(
         { error: "کارشناس نمی‌تواند زمان‌بندی را حذف کند." },
         { status: 403 }
@@ -60,7 +61,7 @@ export async function PATCH(
       return NextResponse.json({ error: "نشست نامعتبر است." }, { status: 401 });
     }
 
-    if (me.role === "SPECIALIST") {
+    if (!memberHasPermission(me, "schedule:update")) {
       return NextResponse.json(
         { error: "کارشناس نمی‌تواند زمان‌بندی را ویرایش کند." },
         { status: 403 }

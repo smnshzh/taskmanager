@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentMember } from "@/lib/auth";
+import { getGroupPermissions, resolvePermissions } from "@/features/access-control/server/permissions";
 
 // GET /api/auth/me
 export async function GET() {
@@ -18,6 +19,9 @@ export async function GET() {
         groupName: member.group?.name ?? null,
         supervisorId: member.supervisorId,
         supervisorName: member.supervisor?.name ?? null,
+        mustChangePassword: member.mustChangePassword,
+        permissions: resolvePermissions(member.role, getGroupPermissions(member)),
+        accessGroups: member.accessGroups.map(({ accessGroup }) => ({ id: accessGroup.id, name: accessGroup.name })),
       },
     });
   } catch (error) {

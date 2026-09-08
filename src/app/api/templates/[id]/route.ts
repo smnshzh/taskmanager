@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { serializeTaskTemplate } from "@/lib/serialize";
 import { PRIORITIES } from "@/lib/constants";
 import { getCurrentMember, isManagerOfGroup } from "@/lib/auth";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 
 // GET /api/templates/[id]
 export async function GET(
@@ -65,7 +66,7 @@ export async function PATCH(
     }
 
     // Only SUPER_ADMIN and MANAGER (own group) can update
-    if (me.role === "SPECIALIST" || me.role === "SUPERVISOR") {
+    if (!memberHasPermission(me, "template:update")) {
       return NextResponse.json(
         { error: "شما مجاز به ویرایش الگو نیستید." },
         { status: 403 }
@@ -121,7 +122,7 @@ export async function DELETE(
     }
 
     // Only SUPER_ADMIN and MANAGER (own group) can delete
-    if (me.role === "SPECIALIST" || me.role === "SUPERVISOR") {
+    if (!memberHasPermission(me, "template:delete")) {
       return NextResponse.json(
         { error: "شما مجاز به حذف الگو نیستید." },
         { status: 403 }

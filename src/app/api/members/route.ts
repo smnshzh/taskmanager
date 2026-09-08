@@ -3,17 +3,33 @@ import { db } from "@/lib/db";
 import { serializeMember } from "@/lib/serialize";
 import { ROLES } from "@/lib/constants";
 import { getCurrentMember, getVisibleMemberIds, canManage, getManagedGroupIds, isManagerOfGroup } from "@/lib/auth";
+import { hashPassword } from "@/features/auth/server/password";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 
 // GET /api/members — role-scoped listing
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const me = await getCurrentMember();
     if (!me) {
       return NextResponse.json({ error: "نشست نامعتبر است." }, { status: 401 });
     }
 
+    const assignmentScope = req.nextUrl.searchParams.get("scope") === "task-assignees";
     let members;
-    if (me.role === "SUPER_ADMIN") {
+    if (assignmentScope) {
+      if (!memberHasPermission(me, "task:create")) {
+        return NextResponse.json({ error: "دسترسی ایجاد تسک را ندارید." }, { status: 403 });
+      }
+      members = await db.member.findMany({
+        where: { isActive: true },
+        include: {
+          group: true,
+          supervisor: true,
+          _count: { select: { tasks: true } },
+        },
+        orderBy: { name: "asc" },
+      });
+    } else if (me.role === "SUPER_ADMIN") {
       members = await db.member.findMany({
         include: {
           group: true,
@@ -81,12 +97,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "نشست نامعتبر است." }, { status: 401 });
     }
 
+    if (!memberHasPermission(me, "member:create")) return NextResponse.json({ error: "دسترسی افزودن عضو را ندارید." }, { status: 403 });
     const body = await req.json();
     const { name, handle, password, role, groupId, supervisorId } = body ?? {};
 
-    if (!name || !handle || !role) {
+    if (!name || !handle || !role || !password) {
       return NextResponse.json(
-        { error: "نام، هندل و نقش الزامی است." },
+        { error: "نام، هندل، رمز عبور اولیه و نقش الزامی است." },
+        { status: 400 }
+      );
+    }
+    if (String(password).length < 8) {
+      return NextResponse.json(
+        { error: "رمز عبور اولیه باید حداقل ۸ کاراکتر باشد." },
         { status: 400 }
       );
     }
@@ -174,7 +197,8 @@ export async function POST(req: NextRequest) {
       data: {
         name: String(name).trim(),
         handle: handle.trim(),
-        password: password || "1234",
+        password: await hashPassword(String(password)),
+        mustChangePassword: true,
         role,
         groupId: groupId || me.groupId || null,
         supervisorId: supervisorId || null,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeTask, serializeLog } from "@/lib/serialize";
 import { requireAuth, isHttpError, isManagerOfGroup } from "@/lib/auth";
+import { memberHasPermission } from "@/features/access-control/server/permissions";
 
 // POST /api/tasks/[id]/approve
 // body: { action: "APPROVED" | "REJECTED" }
@@ -22,7 +23,7 @@ export async function POST(
       );
     }
 
-    if (me.role !== "MANAGER" && me.role !== "SUPERVISOR") {
+    if (!memberHasPermission(me, "task:approve-referral")) {
       return NextResponse.json(
         { error: "تنها مدیر یا سرپرست می‌تواند تسک ارجاعی را تأیید/رد کند." },
         { status: 403 }
@@ -31,7 +32,7 @@ export async function POST(
 
     const task = await db.task.findUnique({
       where: { id },
-      include: { assignee: true, group: true, referer: true, approver: true },
+      include: { assignee: true, creator: true, group: true, referer: true, approver: true },
     });
 
     if (!task) {
@@ -68,7 +69,7 @@ export async function POST(
         approverId: me.id,
         approvedAt: new Date(),
       },
-      include: { assignee: true, group: true, referer: true, approver: true },
+      include: { assignee: true, creator: true, group: true, referer: true, approver: true },
     });
 
     const actionLabel = action === "APPROVED" ? "تأیید" : "رد";

@@ -85,9 +85,8 @@ export function ReferredView() {
   }>({ open: false, task: null, action: "APPROVED" });
   const [reassignId, setReassignId] = React.useState("");
 
-  const canRegister = member?.role !== "MANAGER";
-  const canApprove =
-    member?.role === "MANAGER" || member?.role === "SUPERVISOR";
+  const canRegister = member?.permissions.includes("task:create") ?? false;
+  const canApprove = member?.permissions.includes("task:approve-referral") ?? false;
 
   /* ---- Query referred tasks ---- */
   const { data, isLoading } = useQuery<{

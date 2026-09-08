@@ -28,7 +28,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useTMStore } from "@/lib/pmo-store";
-import { toPersianDigits } from "@/lib/jalali";
+import { formatJalaliLong, toPersianDigits } from "@/lib/jalali";
 import type { SerializedGroup, SerializedMember } from "@/lib/serialize";
 import { toast } from "sonner";
 import {
@@ -40,7 +40,34 @@ import {
   Loader2,
   Crown,
   X,
+  BarChart3,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
 } from "lucide-react";
+
+type StartedReportTask = {
+  id: string;
+  code: string;
+  title: string;
+  priority: string;
+  deadline: string;
+  startedAt: string | null;
+  elapsedDays: number | null;
+};
+
+type StartedReportMember = {
+  id: string;
+  name: string;
+  handle: string;
+  startedCount: number;
+  tasks: StartedReportTask[];
+};
+
+type StartedReport = {
+  group: { id: string; name: string };
+  members: StartedReportMember[];
+};
 
 /* ------------------------------------------------------------------ */
 /*  Main view                                                           */
@@ -48,6 +75,9 @@ import {
 
 export function GroupsView() {
   const queryClient = useQueryClient();
+  const currentMember = useTMStore((state) => state.member);
+  const canCreateGroup = currentMember?.permissions.includes("group:create") ?? false;
+  const canUpdateGroup = currentMember?.permissions.includes("group:update") ?? false;
 
   const { data: groupsData, isLoading } = useQuery({
     queryKey: ["groups"],
@@ -80,6 +110,7 @@ export function GroupsView() {
   const [editKey, setEditKey] = React.useState(0);
   const [deleteTarget, setDeleteTarget] = React.useState<SerializedGroup | null>(null);
   const [deleteBusy, setDeleteBusy] = React.useState(false);
+  const [reportGroup, setReportGroup] = React.useState<SerializedGroup | null>(null);
 
   async function handleCreate(data: { name: string; code: string; managerIds: string[] }) {
     try {
@@ -152,10 +183,12 @@ export function GroupsView() {
         <p className="text-sm text-muted-foreground">
           {toPersianDigits(groups.length)} مجموعه
         </p>
-        <Button onClick={() => { setAddKey((k) => k + 1); setAddOpen(true); }} className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          مجموعه جدید
-        </Button>
+        {canCreateGroup && (
+          <Button onClick={() => { setAddKey((k) => k + 1); setAddOpen(true); }} className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            مجموعه جدید
+          </Button>
+        )}
       </div>
 
       {/* Grid */}
@@ -185,26 +218,30 @@ export function GroupsView() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={() => {
-                        setEditGroup(g);
-                        setEditKey((k) => k + 1);
-                      }}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 text-rose-500 hover:text-rose-600"
-                      onClick={() => setDeleteTarget(g)}
-                      disabled={g.memberCount > 0}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {canUpdateGroup && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => {
+                          setEditGroup(g);
+                          setEditKey((k) => k + 1);
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {canUpdateGroup && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-rose-500 hover:text-rose-600"
+                        onClick={() => setDeleteTarget(g)}
+                        disabled={g.memberCount > 0}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -232,6 +269,15 @@ export function GroupsView() {
                     <span className="font-medium text-foreground">{toPersianDigits(g.memberCount)}</span>
                     عضو
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mr-auto h-8 gap-1.5 text-xs"
+                    onClick={() => setReportGroup(g)}
+                  >
+                    <BarChart3 className="h-3.5 w-3.5" />
+                    گزارش در حال انجام
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -279,7 +325,128 @@ export function GroupsView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <StartedTasksReportDialog
+        key={reportGroup?.id ?? "closed-report"}
+        group={reportGroup}
+        onOpenChange={(open) => !open && setReportGroup(null)}
+      />
     </div>
+  );
+}
+
+function StartedTasksReportDialog({
+  group,
+  onOpenChange,
+}: {
+  group: SerializedGroup | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [expandedMemberId, setExpandedMemberId] = React.useState<string | null>(null);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["group-started-report", group?.id],
+    enabled: !!group,
+    queryFn: async () => {
+      const response = await fetch(`/api/groups/${group!.id}/started-report`);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "دریافت گزارش ناموفق بود.");
+      return body as { data: StartedReport };
+    },
+  });
+
+  const members = data?.data.members ?? [];
+  const totalStarted = members.reduce((sum, member) => sum + member.startedCount, 0);
+
+  return (
+    <Dialog open={!!group} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-sky-600" />
+            گزارش تسک‌های در حال انجام
+          </DialogTitle>
+          <DialogDescription>
+            مجموعه «{group?.name}» — روی نام هر نفر کلیک کنید تا تسک‌های او نمایش داده شود.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="space-y-2 py-2">
+            {Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} className="h-14 w-full" />)}
+          </div>
+        ) : isError ? (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center text-sm text-destructive">
+            دریافت گزارش ناموفق بود.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between rounded-lg bg-sky-50 px-4 py-3 text-sm dark:bg-sky-950/30">
+              <span>مجموع تسک‌های در حال انجام</span>
+              <Badge className="bg-sky-600 text-white">{toPersianDigits(totalStarted)}</Badge>
+            </div>
+
+            <div className="space-y-2">
+              {members.map((member) => {
+                const expanded = expandedMemberId === member.id;
+                return (
+                  <div key={member.id} className="overflow-hidden rounded-lg border">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 p-3 text-right transition-colors hover:bg-muted/50"
+                      onClick={() => setExpandedMemberId(expanded ? null : member.id)}
+                      aria-expanded={expanded}
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 font-semibold text-primary">
+                        {member.name.charAt(0)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">{member.name}</div>
+                        <div className="text-xs text-muted-foreground" dir="ltr">@{member.handle}</div>
+                      </div>
+                      <Badge variant={member.startedCount > 0 ? "default" : "secondary"}>
+                        {toPersianDigits(member.startedCount)} تسک
+                      </Badge>
+                      {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </button>
+
+                    {expanded && (
+                      <div className="space-y-2 border-t bg-muted/20 p-3">
+                        {member.tasks.length === 0 ? (
+                          <p className="py-3 text-center text-xs text-muted-foreground">تسک در حال انجامی ندارد.</p>
+                        ) : member.tasks.map((task) => (
+                          <div key={task.id} className="rounded-md border bg-background p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-medium">{task.title}</div>
+                                <div className="mt-1 font-mono text-[11px] text-muted-foreground" dir="ltr">{task.code}</div>
+                              </div>
+                              <Badge variant="outline" className="shrink-0 border-sky-200 text-sky-700 dark:text-sky-300">
+                                در حال انجام
+                              </Badge>
+                            </div>
+                            <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <Clock3 className="h-3.5 w-3.5" />
+                              ددلاین: {formatJalaliLong(new Date(task.deadline))}
+                            </div>
+                            <div className="mt-1.5 text-xs font-medium text-sky-700 dark:text-sky-300">
+                              {task.elapsedDays === null
+                                ? "زمان شروع ثبت نشده"
+                                : task.elapsedDays === 0
+                                  ? "امروز شروع شده"
+                                  : `${toPersianDigits(task.elapsedDays)} روز از شروع گذشته`}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

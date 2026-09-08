@@ -24,8 +24,9 @@ import {
 import { useTMStore } from "@/lib/pmo-store";
 import { PRIORITIES, priorityByKey } from "@/lib/constants";
 import { JalaliDatePicker } from "@/components/jalali-date-picker";
-import type { SerializedMember, SerializedGroup } from "@/lib/serialize";
+import type { SerializedMember, SerializedGroup, SerializedTask } from "@/lib/serialize";
 import { toast } from "sonner";
+import { TaskSearchSelect } from "./task-search-select";
 import {
   Loader2,
   FileText,
@@ -34,6 +35,7 @@ import {
   UserCircle,
   Building2,
   Flag,
+  Link2,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -44,13 +46,14 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onCreated: () => void;
+  initialPreviousTask?: { id: string; code: string; title: string };
 }
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                           */
 /* ------------------------------------------------------------------ */
 
-export function NewTaskDialog({ open, onOpenChange, onCreated }: Props) {
+export function NewTaskDialog({ open, onOpenChange, onCreated, initialPreviousTask }: Props) {
   const member = useTMStore((s) => s.member);
   const queryClient = useQueryClient();
 
@@ -67,12 +70,13 @@ export function NewTaskDialog({ open, onOpenChange, onCreated }: Props) {
   const [letterDate, setLetterDate] = React.useState("");
   const [refererId, setRefererId] = React.useState<string>(member?.id ?? "");
   const [busy, setBusy] = React.useState(false);
+  const [previousTaskId, setPreviousTaskId] = React.useState(initialPreviousTask?.id ?? "");
 
   // Fetch data
   const { data: groupsData } = useQuery({
-    queryKey: ["groups"],
+    queryKey: ["groups", "task-assignees"],
     queryFn: async () => {
-      const r = await fetch("/api/groups");
+      const r = await fetch("/api/groups?scope=task-assignees");
       if (!r.ok) return { groups: [] as SerializedGroup[] };
       return (await r.json()) as { groups: SerializedGroup[] };
     },
@@ -80,9 +84,9 @@ export function NewTaskDialog({ open, onOpenChange, onCreated }: Props) {
   });
 
   const { data: membersData } = useQuery({
-    queryKey: ["members"],
+    queryKey: ["members", "task-assignees"],
     queryFn: async () => {
-      const r = await fetch("/api/members");
+      const r = await fetch("/api/members?scope=task-assignees");
       if (!r.ok) return { members: [] as SerializedMember[] };
       return (await r.json()) as { members: SerializedMember[] };
     },
@@ -95,10 +99,7 @@ export function NewTaskDialog({ open, onOpenChange, onCreated }: Props) {
   // Filter groups by role
   const availableGroups = React.useMemo(() => {
     if (!member) return [];
-    if (member.role === "SUPER_ADMIN") return groups;
-    if (member.role === "MANAGER") return groups.filter((g) => g.id === member.groupId);
-    // SUPERVISOR: own group
-    return groups.filter((g) => g.id === member.groupId);
+    return groups;
   }, [groups, member]);
 
   // Auto-set group if only one available (derived, no effect)
@@ -108,22 +109,22 @@ export function NewTaskDialog({ open, onOpenChange, onCreated }: Props) {
     return "";
   }, [rawGroupId, availableGroups]);
 
+  const { data: tasksData } = useQuery({
+    queryKey: ["tasks", "workflow-candidates"],
+    queryFn: async () => {
+      const r = await fetch("/api/workflows/candidates");
+      if (!r.ok) return { tasks: [] as SerializedTask[] };
+      return (await r.json()) as { tasks: SerializedTask[] };
+    },
+    enabled: open,
+  });
+
   // Filter members by selected group and hierarchy
   const assigneeCandidates = React.useMemo(() => {
     if (!member || !groupId) return [];
     const groupMembers = members.filter((m) => m.groupId === groupId);
 
-    if (member.role === "SUPER_ADMIN" || member.role === "MANAGER") {
-      return groupMembers;
-    }
-    if (member.role === "SUPERVISOR") {
-      // Can assign to self and subordinates
-      return groupMembers.filter(
-        (m) => m.id === member.id || m.supervisorId === member.id
-      );
-    }
-    // SPECIALIST: only self
-    return groupMembers.filter((m) => m.id === member.id);
+    return groupMembers;
   }, [members, groupId, member]);
 
   // Validate assignee: clear if not in candidates (derived, no effect)
@@ -177,6 +178,7 @@ export function NewTaskDialog({ open, onOpenChange, onCreated }: Props) {
         priority,
         deadline: new Date(`${deadlineDate}T${deadlineTime || "23:59"}:00`).toISOString(),
         source,
+        previousTaskId: previousTaskId || null,
       };
 
       if (source === "REFERRED") {
@@ -324,6 +326,15 @@ export function NewTaskDialog({ open, onOpenChange, onCreated }: Props) {
                 />
               </div>
             </div>
+          </div>
+
+          <div className="space-y-1.5 rounded-lg border border-sky-200 bg-sky-50/50 p-3 dark:border-sky-800 dark:bg-sky-950/20">
+            <Label className="flex items-center gap-1.5">
+              <Link2 className="h-3.5 w-3.5" />
+              مرحله قبلی گردش‌کار
+            </Label>
+            {initialPreviousTask ? <div className="rounded-md border bg-background px-3 py-2 text-sm">{initialPreviousTask.code} — {initialPreviousTask.title}</div> : <TaskSearchSelect tasks={tasksData?.tasks ?? []} value={previousTaskId} onChange={setPreviousTaskId} placeholder="جست‌وجوی مرحله قبلی (اختیاری)" />}
+            <p className="text-[11px] text-muted-foreground">با انتخاب یک تسک، این کار به‌عنوان مرحله بعدی آن ثبت می‌شود.</p>
           </div>
 
           {/* Source toggle */}

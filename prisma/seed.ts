@@ -1,8 +1,18 @@
 import { db } from "../src/lib/db";
+import { hashPassword } from "../src/features/auth/server/password";
 
 async function main() {
   console.log("Seeding TaskManager database...");
 
+  const initialPassword = process.env.SEED_INITIAL_PASSWORD;
+  if (!initialPassword || initialPassword.length < 12) {
+    throw new Error("SEED_INITIAL_PASSWORD with at least 12 characters is required");
+  }
+  const passwordHash = await hashPassword(initialPassword);
+
+  await db.loginAttempt.deleteMany();
+  await db.session.deleteMany();
+  await db.auditLog.deleteMany();
   await db.followUpLog.deleteMany();
   await db.task.deleteMany();
   await db.taskSchedule.deleteMany();
@@ -18,62 +28,62 @@ async function main() {
 
   // ---- Super Admin ----
   await db.member.create({
-    data: { name: "مدیر کل سیستم", handle: "@admin", password: "admin", role: "SUPER_ADMIN" },
+    data: { name: "مدیر کل سیستم", handle: "@admin", password: passwordHash, role: "SUPER_ADMIN" },
   });
 
   // ---- Managers ----
   const mgr1 = await db.member.create({
-    data: { name: "مهندس رضایی", handle: "@mgr1", password: "admin", role: "MANAGER", group: { connect: { id: grp1.id } } },
+    data: { name: "مهندس رضایی", handle: "@mgr1", password: passwordHash, role: "MANAGER", group: { connect: { id: grp1.id } } },
   });
   await db.groupManager.create({ data: { groupId: grp1.id, memberId: mgr1.id } });
 
   const mgr2 = await db.member.create({
-    data: { name: "مهندس احمدی", handle: "@mgr2", password: "admin", role: "MANAGER", group: { connect: { id: grp2.id } } },
+    data: { name: "مهندس احمدی", handle: "@mgr2", password: passwordHash, role: "MANAGER", group: { connect: { id: grp2.id } } },
   });
   await db.groupManager.create({ data: { groupId: grp2.id, memberId: mgr2.id } });
 
   const mgr3 = await db.member.create({
-    data: { name: "مهندس نوری", handle: "@mgr3", password: "admin", role: "MANAGER", group: { connect: { id: grp3.id } } },
+    data: { name: "مهندس نوری", handle: "@mgr3", password: passwordHash, role: "MANAGER", group: { connect: { id: grp3.id } } },
   });
   await db.groupManager.create({ data: { groupId: grp3.id, memberId: mgr3.id } });
 
   const mgr4 = await db.member.create({
-    data: { name: "مهندس موسوی", handle: "@mgr4", password: "admin", role: "MANAGER", group: { connect: { id: grp4.id } } },
+    data: { name: "مهندس موسوی", handle: "@mgr4", password: passwordHash, role: "MANAGER", group: { connect: { id: grp4.id } } },
   });
   await db.groupManager.create({ data: { groupId: grp4.id, memberId: mgr4.id } });
 
   // ---- Supervisors ----
   const sup1 = await db.member.create({
-    data: { name: "سرپرست علی‌پور", handle: "@sup1", password: "1234", role: "SUPERVISOR", group: { connect: { id: grp1.id } }, supervisor: { connect: { id: mgr1.id } } },
+    data: { name: "سرپرست علی‌پور", handle: "@sup1", password: passwordHash, role: "SUPERVISOR", group: { connect: { id: grp1.id } }, supervisor: { connect: { id: mgr1.id } } },
   });
   const sup2 = await db.member.create({
-    data: { name: "سرپرست کریمی", handle: "@sup2", password: "1234", role: "SUPERVISOR", group: { connect: { id: grp2.id } }, supervisor: { connect: { id: mgr2.id } } },
+    data: { name: "سرپرست کریمی", handle: "@sup2", password: passwordHash, role: "SUPERVISOR", group: { connect: { id: grp2.id } }, supervisor: { connect: { id: mgr2.id } } },
   });
 
   // ---- Specialists ----
   const sp1 = await db.member.create({
-    data: { name: "علی محمدی", handle: "@ali", password: "1234", role: "SPECIALIST", group: { connect: { id: grp1.id } }, supervisor: { connect: { id: sup1.id } } },
+    data: { name: "علی محمدی", handle: "@ali", password: passwordHash, role: "SPECIALIST", group: { connect: { id: grp1.id } }, supervisor: { connect: { id: sup1.id } } },
   });
   const sp2 = await db.member.create({
-    data: { name: "سارا رحیمی", handle: "@sara", password: "1234", role: "SPECIALIST", group: { connect: { id: grp1.id } }, supervisor: { connect: { id: sup1.id } } },
+    data: { name: "سارا رحیمی", handle: "@sara", password: passwordHash, role: "SPECIALIST", group: { connect: { id: grp1.id } }, supervisor: { connect: { id: sup1.id } } },
   });
   const sp3 = await db.member.create({
-    data: { name: "حسین حسینی", handle: "@hossein", password: "1234", role: "SPECIALIST", group: { connect: { id: grp2.id } }, supervisor: { connect: { id: sup2.id } } },
+    data: { name: "حسین حسینی", handle: "@hossein", password: passwordHash, role: "SPECIALIST", group: { connect: { id: grp2.id } }, supervisor: { connect: { id: sup2.id } } },
   });
   const sp4 = await db.member.create({
-    data: { name: "مریم نوری", handle: "@maryam", password: "1234", role: "SPECIALIST", group: { connect: { id: grp2.id } }, supervisor: { connect: { id: sup2.id } } },
+    data: { name: "مریم نوری", handle: "@maryam", password: passwordHash, role: "SPECIALIST", group: { connect: { id: grp2.id } }, supervisor: { connect: { id: sup2.id } } },
   });
   const sp5 = await db.member.create({
-    data: { name: "رضا قاسمی", handle: "@reza", password: "1234", role: "SPECIALIST", group: { connect: { id: grp3.id } }, supervisor: { connect: { id: mgr3.id } } },
+    data: { name: "رضا قاسمی", handle: "@reza", password: passwordHash, role: "SPECIALIST", group: { connect: { id: grp3.id } }, supervisor: { connect: { id: mgr3.id } } },
   });
   const sp6 = await db.member.create({
-    data: { name: "فاطمه موسوی", handle: "@fateme", password: "1234", role: "SPECIALIST", group: { connect: { id: grp3.id } }, supervisor: { connect: { id: mgr3.id } } },
+    data: { name: "فاطمه موسوی", handle: "@fateme", password: passwordHash, role: "SPECIALIST", group: { connect: { id: grp3.id } }, supervisor: { connect: { id: mgr3.id } } },
   });
   const sp7 = await db.member.create({
-    data: { name: "امیر تهرانی", handle: "@amir", password: "1234", role: "SPECIALIST", group: { connect: { id: grp4.id } }, supervisor: { connect: { id: mgr4.id } } },
+    data: { name: "امیر تهرانی", handle: "@amir", password: passwordHash, role: "SPECIALIST", group: { connect: { id: grp4.id } }, supervisor: { connect: { id: mgr4.id } } },
   });
   const sp8 = await db.member.create({
-    data: { name: "زهرا شریفی", handle: "@zahra", password: "1234", role: "SPECIALIST", group: { connect: { id: grp4.id } }, supervisor: { connect: { id: mgr4.id } } },
+    data: { name: "زهرا شریفی", handle: "@zahra", password: passwordHash, role: "SPECIALIST", group: { connect: { id: grp4.id } }, supervisor: { connect: { id: mgr4.id } } },
   });
 
   // ---- Task Templates ----
@@ -133,7 +143,6 @@ async function main() {
     const sDoneAt = t.status === "DONE" ? new Date(now.getTime() - dayMs) : null;
     const sStartTime = new Date(Math.max(deadline.getTime() - 2 * dayMs, created.getTime()));
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const d: any = {
       code: `TSK-${String(counter).padStart(4, "0")}`,
       title: t.title,
