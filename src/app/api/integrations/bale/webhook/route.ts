@@ -74,7 +74,12 @@ export async function POST(request: NextRequest) {
       result = await getBaleTaskMenu(externalUserId, command.slice(1) as BaleTaskListMode);
     } else {
       result = await handleBaleWizardText(externalUserId, message?.text || "")
-        ?? { text: await handleBaleCommand({ text: message?.text, externalUserId, externalChatId: chatId }) };
+        ?? { text: await handleBaleCommand({
+          text: message?.text,
+          externalUserId,
+          externalChatId: chatId,
+          chatType: message?.chat.type,
+        }) };
     }
   }
   try {

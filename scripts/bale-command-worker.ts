@@ -78,7 +78,12 @@ async function processUpdate(update: Update) {
       result = await getBaleTaskMenu(String(userId), taskCommand as BaleTaskListMode);
     } else {
       result = await handleBaleWizardText(String(userId), update.message?.text || "")
-        ?? { text: await handleBaleCommand({ text: update.message?.text, externalUserId: String(userId), externalChatId: String(chatId) }) };
+        ?? { text: await handleBaleCommand({
+          text: update.message?.text,
+          externalUserId: String(userId),
+          externalChatId: String(chatId),
+          chatType: chat?.type,
+        }) };
     }
     await new BaleProvider().sendMessage({ recipientId: String(chatId), text: result.text, replyMarkup: result.replyMarkup, idempotencyKey: `BALE_COMMAND:${updateId}` });
   } catch (error) {

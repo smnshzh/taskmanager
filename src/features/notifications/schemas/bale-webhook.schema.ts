@@ -6,14 +6,20 @@ export const baleWebhookSchema = z.object({
     message_id: z.union([z.string(), z.number()]),
     text: z.string().max(512).optional(),
     from: z.object({ id: z.union([z.string(), z.number()]) }),
-    chat: z.object({ id: z.union([z.string(), z.number()]) }),
+    chat: z.object({
+      id: z.union([z.string(), z.number()]),
+      type: z.string().max(32).optional(),
+    }),
   }).optional(),
   callback_query: z.object({
     id: z.union([z.string(), z.number()]),
     data: z.string().max(128).optional(),
     from: z.object({ id: z.union([z.string(), z.number()]) }),
     message: z.object({
-      chat: z.object({ id: z.union([z.string(), z.number()]) }),
+      chat: z.object({
+        id: z.union([z.string(), z.number()]),
+        type: z.string().max(32).optional(),
+      }),
     }).optional(),
   }).optional(),
 });

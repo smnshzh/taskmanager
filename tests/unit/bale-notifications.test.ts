@@ -3,7 +3,7 @@ import { hashLinkCode, linkCodeMatches, normalizeLinkCode } from "@/features/not
 import { BaleProvider } from "@/features/notifications/server/providers/bale.provider";
 import { NotificationProviderError } from "@/features/notifications/server/providers/provider-error";
 import { formatTaskAssignedMessage, formatTaskStatusMessage, taskAssignedReplyMarkup } from "@/features/notifications/server/notification.events";
-import { baleTaskStatusLabel, mainMenuMarkup, parseNewTaskCommand, wizardReview } from "@/features/notifications/server/bale-command.service";
+import { baleTaskStatusLabel, mainMenuMarkup, parseNewTaskCommand, shouldForwardTextToAssistant, wizardReview } from "@/features/notifications/server/bale-command.service";
 import { baleWebhookSchema } from "@/features/notifications/schemas/bale-webhook.schema";
 
 describe("Bale account linking", () => {
@@ -94,12 +94,22 @@ describe("Bale new-task command", () => {
 });
 
 describe("Bale professional menus", () => {
+  it("forwards ordinary text only from private chats while allowing explicit group requests", () => {
+    expect(shouldForwardTextToAssistant("سلام", "private")).toBe(true);
+    expect(shouldForwardTextToAssistant("سلام", "group")).toBe(false);
+    expect(shouldForwardTextToAssistant("/ask سلام", "group")).toBe(true);
+    expect(shouldForwardTextToAssistant("/newtask", "private")).toBe(false);
+  });
+
   it("labels in-progress tasks in list buttons", () => {
     expect(baleTaskStatusLabel("STARTED")).toContain("در حال انجام");
   });
   it("shows task creation only when permitted", () => {
     expect(JSON.stringify(mainMenuMarkup(true))).toContain("menu:new");
+    expect(JSON.stringify(mainMenuMarkup(true))).toContain("menu:ai-task");
     expect(JSON.stringify(mainMenuMarkup(false))).not.toContain("menu:new");
+    expect(JSON.stringify(mainMenuMarkup(false))).not.toContain("menu:ai-task");
+    expect(JSON.stringify(mainMenuMarkup(false))).toContain("menu:assistant");
   });
 
   it("shows team task menus only for managers", () => {

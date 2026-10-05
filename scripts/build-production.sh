@@ -5,10 +5,10 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
 
 npm ci
+npm run db:generate
 npm run lint
 npm run typecheck
 npm run test
-npm run db:generate
 npm run build
 
 mkdir -p .next/standalone/.next

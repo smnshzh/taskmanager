@@ -6,15 +6,20 @@ import { consumeBaleLinkCode, normalizeLinkCode } from "./account-link.service";
 import { enqueueReadyWorkflowSuccessors, enqueueTaskAssigned, enqueueTaskStatusChangedForManagers } from "./notification.events";
 import { connectWorkflowTasks, ensureWorkflowTaskReady } from "@/features/tasks/server/task-workflow.service";
 import { isWorkflowClosed } from "@/features/tasks/workflow-status";
+import { askBarakaAssistant, AssistantClientError } from "@/features/assistant/server/baraka-assistant.client";
+import { createTaskDraftFromText } from "@/features/assistant/server/task-draft.service";
 import { z } from "zod";
 
-type CommandInput = { text?: string; externalUserId: string; externalChatId: string };
+type CommandInput = { text?: string; externalUserId: string; externalChatId: string; chatType?: string };
 
 const HELP = [
   "دستورهای ربات مدیریت تسک:",
   "/link CODE — اتصال حساب",
   "/newtask @handle | عنوان | تاریخ ساعت | اولویت — ساخت تسک",
   "نمونه: /newtask @ali | تهیه گزارش | 1405/05/20 14:30 | HIGH",
+  "/ask متن — پرسش از دستیار هوشمند",
+  "در گفت‌وگوی خصوصی می‌توانید متن پرسش را مستقیماً ارسال کنید.",
+  "برای ساخت تسک از متن طبیعی، گزینه «✨ ساخت تسک با متن» را از /menu انتخاب کنید.",
   "/mytasks — تسک‌های باز من",
   "/today — تسک‌های امروز",
   "/overdue — تسک‌های عقب‌افتاده",
@@ -26,6 +31,14 @@ const HELP = [
 
 function commandName(text: string): string {
   return text.trim().split(/\s+/)[0]?.replace(/@\w+$/u, "").toLowerCase() || "";
+}
+
+export function shouldForwardTextToAssistant(text: string, chatType?: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const command = commandName(trimmed);
+  if (command === "/ask") return true;
+  return !command.startsWith("/") && (!chatType || chatType === "private");
 }
 
 function linkCode(text: string): string | null {
@@ -153,7 +166,11 @@ const wizardExpiry = () => new Date(Date.now() + WIZARD_TTL_MS);
 export function mainMenuMarkup(canCreate: boolean, canViewTeam = false): BaleTaskActionResult["replyMarkup"] {
   return {
     inline_keyboard: [
-      ...(canCreate ? [[{ text: "➕ ثبت تسک جدید", callback_data: "menu:new" }]] : []),
+      ...(canCreate ? [[
+        { text: "➕ ثبت تسک جدید", callback_data: "menu:new" },
+        { text: "✨ ساخت تسک با متن", callback_data: "menu:ai-task" },
+      ]] : []),
+      [{ text: "🤖 گفت‌وگو با دستیار هوشمند", callback_data: "menu:assistant" }],
       [
         { text: "📥 صف کارهای من", callback_data: "menu:queue" },
         { text: "📅 کارهای امروز", callback_data: "menu:today" },
@@ -363,6 +380,12 @@ export async function handleBaleMenuAction(externalUserId: string, data: string)
 
   if (data === "menu:home") return getBaleMainMenu(externalUserId);
   if (data === "menu:help") return { text: HELP, replyMarkup: mainMenuMarkup(memberHasPermission(channel.member, "task:create")) };
+  if (data === "menu:assistant") {
+    return {
+      text: "🤖 پیام یا پرسش خود را ارسال کنید تا به سرویس دستیار هوشمند فرستاده شود.\n\nاطلاعات محرمانه، رمز عبور یا داده شخصی حساس ارسال نکنید. برای ساخت تسک از گزینه «ساخت تسک با متن» یا فرم «ثبت تسک جدید» استفاده کنید.",
+      replyMarkup: { inline_keyboard: [[{ text: "↩️ منوی اصلی", callback_data: "menu:home" }]] },
+    };
+  }
   if (["menu:queue", "menu:today", "menu:overdue", "menu:mytasks"].includes(data)) {
     return getBaleTaskMenu(externalUserId, data.slice(5) as BaleTaskListMode);
   }
@@ -376,6 +399,18 @@ export async function handleBaleMenuAction(externalUserId: string, data: string)
     return { text: "فرایند ثبت تسک لغو شد.", replyMarkup: mainMenuMarkup(memberHasPermission(channel.member, "task:create")) };
   }
   if (!memberHasPermission(channel.member, "task:create")) return { text: "شما مجوز ایجاد تسک را ندارید." };
+
+  if (data === "menu:ai-task") {
+    await db.baleConversation.upsert({
+      where: { memberId: channel.memberId },
+      create: { memberId: channel.memberId, step: "AI_TASK_TEXT", data: {}, expiresAt: wizardExpiry() },
+      update: { step: "AI_TASK_TEXT", data: {}, expiresAt: wizardExpiry() },
+    });
+    return {
+      text: "✨ تسک را با یک جمله توضیح دهید.\n\nنمونه: «تهیه گزارش فروش تا فردا ساعت ۱۴ با اولویت زیاد»\n\nابتدا پیش‌نویس ساخته می‌شود و هیچ تسکی بدون انتخاب مسئول و تأیید نهایی ثبت نخواهد شد.",
+      replyMarkup: { inline_keyboard: [[{ text: "❌ لغو", callback_data: "new:cancel" }]] },
+    };
+  }
 
   if (data === "menu:new") {
     await db.baleConversation.upsert({
@@ -401,10 +436,18 @@ export async function handleBaleMenuAction(externalUserId: string, data: string)
       select: { id: true, name: true, groupId: true },
     });
     if (!assignee) return { text: "این مسئول دیگر قابل انتخاب نیست؛ فرد دیگری را انتخاب کنید." };
+    const hasAssistantDraft = Boolean(current.title && current.deadline && current.priority);
     await db.baleConversation.update({
       where: { memberId: channel.memberId },
-      data: { step: "TITLE", data: { ...current, assigneeId: assignee.id, assigneeName: assignee.name, groupId: assignee.groupId! }, expiresAt: wizardExpiry() },
+      data: {
+        step: hasAssistantDraft ? "PRIORITY" : "TITLE",
+        data: { ...current, assigneeId: assignee.id, assigneeName: assignee.name, groupId: assignee.groupId! },
+        expiresAt: wizardExpiry(),
+      },
     });
+    if (hasAssistantDraft) {
+      return handleBaleMenuAction(externalUserId, `new:priority:${current.priority}`) as Promise<BaleTaskActionResult>;
+    }
     return {
       text: `➕ ثبت تسک جدید — مرحله ۲ از ۶\n\nمسئول: ${assignee.name}\n\n📝 عنوان تسک را در یک پیام ارسال کنید.`,
       replyMarkup: { inline_keyboard: [[{ text: "❌ لغو", callback_data: "new:cancel" }]] },
@@ -473,6 +516,58 @@ export async function handleBaleWizardText(externalUserId: string, text: string)
     return { text: "⌛ زمان فرم به پایان رسیده است.", replyMarkup: mainMenuMarkup(true) };
   }
   const current = conversation.data as WizardData;
+  if (conversation.step === "AI_TASK_TEXT") {
+    if (!memberHasPermission(channel.member, "task:create")) {
+      await db.baleConversation.deleteMany({ where: { memberId: channel.memberId } });
+      return { text: "شما مجوز ایجاد تسک را ندارید." };
+    }
+    const description = text.replace(/\s+/g, " ").trim();
+    const recentRequests = await db.auditLog.count({
+      where: {
+        actorId: channel.memberId,
+        action: "ASSISTANT_TASK_DRAFT_FROM_BALE",
+        createdAt: { gte: new Date(Date.now() - 60_000) },
+      },
+    });
+    if (recentRequests >= 5) return { text: "⏳ تعداد درخواست‌ها زیاد است؛ یک دقیقه دیگر دوباره تلاش کنید." };
+    const audit = await db.auditLog.create({
+      data: {
+        actorId: channel.memberId,
+        action: "ASSISTANT_TASK_DRAFT_FROM_BALE",
+        entityType: "TaskDraft",
+        result: "ATTEMPT",
+        metadata: { provider: "bale", messageLength: description.length },
+      },
+      select: { id: true },
+    });
+    try {
+      const draft = await createTaskDraftFromText(description);
+      await db.$transaction([
+        db.baleConversation.update({
+          where: { memberId: channel.memberId },
+          data: {
+            step: "ASSIGNEE",
+            data: { title: draft.title, deadline: draft.deadline.toISOString(), priority: draft.priority },
+            expiresAt: wizardExpiry(),
+          },
+        }),
+        db.auditLog.update({ where: { id: audit.id }, data: { result: "SUCCESS" } }),
+      ]);
+      return assigneePicker(channel.memberId, 0);
+    } catch (error) {
+      const errorCode = error instanceof AssistantClientError ? error.code : "UNKNOWN";
+      await db.auditLog.update({
+        where: { id: audit.id },
+        data: { result: "FAILURE", metadata: { provider: "bale", messageLength: description.length, errorCode } },
+      }).catch(() => undefined);
+      return {
+        text: error instanceof AssistantClientError
+          ? `❌ ${error.message}\nشرح را دقیق‌تر بنویسید و دوباره بفرستید.`
+          : "❌ ساخت پیش‌نویس انجام نشد؛ کمی بعد دوباره تلاش کنید.",
+        replyMarkup: { inline_keyboard: [[{ text: "❌ لغو", callback_data: "new:cancel" }]] },
+      };
+    }
+  }
   if (conversation.step === "TITLE") {
     const title = text.replace(/\s+/g, " ").trim();
     if (!title || title.length > 160) return { text: "عنوان باید بین ۱ تا ۱۶۰ کاراکتر باشد. دوباره ارسال کنید." };
@@ -552,6 +647,47 @@ export async function handleBaleCommand(input: CommandInput): Promise<string> {
       db.auditLog.create({ data: { actorId: channel.memberId, action: "NOTIFICATION_CHANNEL_UNLINKED", entityType: "NotificationChannel", entityId: channel.id, result: "SUCCESS", metadata: { provider: "bale", source: "bot" } } }),
     ]);
     return "اتصال حساب بله شما غیرفعال شد.";
+  }
+
+  if (shouldForwardTextToAssistant(text, input.chatType)) {
+    const message = command === "/ask" ? text.replace(/^\/ask(?:@\w+)?\s*/iu, "").trim() : text;
+    if (!message) return "متن پرسش را بعد از /ask بنویسید؛ برای نمونه:\n/ask فروش این ماه را خلاصه کن";
+    const recentRequests = await db.auditLog.count({
+      where: {
+        actorId: channel.memberId,
+        action: "ASSISTANT_MESSAGE_FROM_BALE",
+        createdAt: { gte: new Date(Date.now() - 60_000) },
+      },
+    });
+    if (recentRequests >= 10) return "⏳ تعداد درخواست‌های دستیار زیاد است؛ یک دقیقه دیگر دوباره تلاش کنید.";
+
+    const audit = await db.auditLog.create({
+      data: {
+        actorId: channel.memberId,
+        action: "ASSISTANT_MESSAGE_FROM_BALE",
+        entityType: "Assistant",
+        result: "ATTEMPT",
+        metadata: { provider: "bale", messageLength: message.length },
+      },
+      select: { id: true },
+    });
+    try {
+      const reply = await askBarakaAssistant(message);
+      await db.auditLog.update({
+        where: { id: audit.id },
+        data: { result: "SUCCESS" },
+      });
+      return reply;
+    } catch (error) {
+      const errorCode = error instanceof AssistantClientError ? error.code : "UNKNOWN";
+      await db.auditLog.update({
+        where: { id: audit.id },
+        data: { result: "FAILURE", metadata: { provider: "bale", messageLength: message.length, errorCode } },
+      }).catch(() => undefined);
+      return error instanceof AssistantClientError
+        ? `❌ ${error.message}`
+        : "❌ سرویس دستیار اکنون در دسترس نیست؛ کمی بعد دوباره تلاش کنید.";
+    }
   }
 
   if (command === "/newtask") {
