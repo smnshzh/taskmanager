@@ -24,6 +24,7 @@ export async function GET(
         group: true,
         referer: true,
         approver: true,
+        meetingDecision: { include: { meetingMinute: { select: { id: true, code: true, title: true } } } },
         logs: { orderBy: { createdAt: "desc" }, take: 30 },
       },
     });

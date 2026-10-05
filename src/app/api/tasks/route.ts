@@ -106,7 +106,14 @@ export async function GET(req: NextRequest) {
     const [tasks, total] = await Promise.all([
       db.task.findMany({
         where,
-        include: { assignee: true, creator: true, group: true, referer: true, approver: true },
+        include: {
+          assignee: true,
+          creator: true,
+          group: true,
+          referer: true,
+          approver: true,
+          meetingDecision: { include: { meetingMinute: { select: { id: true, code: true, title: true } } } },
+        },
         orderBy: { deadline: "asc" },
         skip: (page - 1) * limit,
         take: limit,

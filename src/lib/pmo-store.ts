@@ -7,6 +7,7 @@ export type ViewKey =
   | "kanban"
   | "list"
   | "workflow"
+  | "meeting-minutes"
   | "scheduler"
   | "referred"
   | "mytasks"

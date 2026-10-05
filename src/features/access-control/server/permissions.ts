@@ -9,6 +9,7 @@ export const PERMISSIONS = [
   { key: "panel:members", label: "پنل اعضا", category: "پنل‌ها" },
   { key: "panel:groups", label: "پنل مجموعه‌ها", category: "پنل‌ها" },
   { key: "panel:done-tasks", label: "پنل گزارش انجام‌شده", category: "پنل‌ها" },
+  { key: "panel:meeting-minutes", label: "پنل صورتجلسه‌ها", category: "پنل‌ها" },
   { key: "panel:trash", label: "پنل سطل زباله", category: "پنل‌ها" },
   { key: "panel:admin", label: "پنل مدیریت سیستم", category: "پنل‌ها" },
   { key: "task:create", label: "ایجاد تسک", category: "تسک‌ها" },
@@ -18,6 +19,8 @@ export const PERMISSIONS = [
   { key: "task:delete-permanently", label: "حذف دائمی تسک", category: "تسک‌ها" },
   { key: "task:approve-referral", label: "تأیید یا رد ارجاع", category: "تسک‌ها" },
   { key: "task:import", label: "ورود گروهی تسک", category: "تسک‌ها" },
+  { key: "meeting:view", label: "مشاهده صورتجلسه‌ها", category: "صورتجلسه" },
+  { key: "meeting:create", label: "ثبت صورتجلسه", category: "صورتجلسه" },
   { key: "member:create", label: "افزودن عضو", category: "اعضا" },
   { key: "member:update", label: "ویرایش عضو", category: "اعضا" },
   { key: "member:delete", label: "حذف عضو", category: "اعضا" },
@@ -36,7 +39,7 @@ export const PERMISSIONS = [
 
 export type PermissionKey = (typeof PERMISSIONS)[number]["key"];
 export const PERMISSION_KEYS = new Set<string>(PERMISSIONS.map((item) => item.key));
-const COMMON: PermissionKey[] = ["panel:overview", "panel:kanban", "panel:task-list", "panel:workflow", "panel:referrals", "panel:my-tasks", "panel:done-tasks", "task:create", "task:update"];
+const COMMON: PermissionKey[] = ["panel:overview", "panel:kanban", "panel:task-list", "panel:workflow", "panel:referrals", "panel:my-tasks", "panel:done-tasks", "panel:meeting-minutes", "task:create", "task:update", "meeting:view", "meeting:create"];
 const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
   SUPER_ADMIN: PERMISSIONS.map((item) => item.key),
   MANAGER: [...COMMON, "panel:scheduler", "panel:members", "panel:groups", "panel:trash", "task:create", "task:delete", "task:restore", "task:delete-permanently", "task:approve-referral", "task:import", "member:create", "member:update", "member:delete", "template:create", "template:update", "template:delete", "schedule:create", "schedule:update", "schedule:delete", "schedule:import"],

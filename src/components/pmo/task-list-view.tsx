@@ -105,6 +105,7 @@ import {
   Columns3,
   Trash2,
   GitBranch,
+  ClipboardCheck,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { NewTaskDialog } from "./new-task-dialog";
@@ -130,6 +131,7 @@ const SOURCE_STYLES: Record<string, string> = {
   MANUAL: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700",
   SCHEDULED: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800",
   REFERRED: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+  MEETING: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800",
 };
 
 function PriorityBadge({ priority }: { priority: string }) {
@@ -1273,6 +1275,13 @@ function TaskDetailSheet({
                 label="منبع"
                 value={task.sourceLabel}
               />
+              {task.meetingMinuteCode && (
+                <MetaRow
+                  icon={<ClipboardCheck className="h-4 w-4" />}
+                  label="صورتجلسه مرتبط"
+                  value={`${task.meetingMinuteCode} — ${task.meetingMinuteTitle ?? "بدون عنوان"}`}
+                />
+              )}
             </div>
 
             {task.description && (

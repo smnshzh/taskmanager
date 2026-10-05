@@ -30,6 +30,7 @@ export const TASK_SOURCES = [
   { key: "MANUAL", label: "دستی" },
   { key: "SCHEDULED", label: "زمان‌بندی شده" },
   { key: "REFERRED", label: "ارجاع نامه‌ای" },
+  { key: "MEETING", label: "مصوبه صورتجلسه" },
 ] as const;
 
 export type TaskSourceKey = (typeof TASK_SOURCES)[number]["key"];

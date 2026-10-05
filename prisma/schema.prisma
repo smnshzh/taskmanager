@@ -75,6 +75,8 @@ model Member {
   createdTaskRelations    TaskRelation[]
   accountLinkCodes        AccountLinkCode[]
   baleConversation        BaleConversation?
+  secretariedMeetings     MeetingMinute[]          @relation("MeetingMinuteSecretary")
+  meetingAttendances      MeetingAttendee[]
 
   @@index([groupId])
   @@index([supervisorId])
@@ -119,44 +121,46 @@ model TaskSchedule {
 }
 
 // ---- Tasks ----
-// source: MANUAL (created by manager/supervisor) | SCHEDULED (from schedule) | REFERRED (from letter)
+// source: MANUAL | SCHEDULED | REFERRED | MEETING
 model Task {
-  id               String         @id @default(cuid())
-  code             String         @unique // e.g. TSK-0001
-  title            String
-  description      String?
-  groupId          String
-  group            OrgGroup       @relation(fields: [groupId], references: [id])
-  source           String         @default("MANUAL") // MANUAL | SCHEDULED | REFERRED
-  assigneeId       String
-  assignee         Member         @relation(fields: [assigneeId], references: [id])
-  creatorId        String?
-  creator          Member?        @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: SetNull)
-  priority         String         @default("MEDIUM") // HIGH | MEDIUM | LOW
-  status           String         @default("PENDING") // PENDING | STARTED | BLOCKED | DONE
+  id                String           @id @default(cuid())
+  code              String           @unique // e.g. TSK-0001
+  title             String
+  description       String?
+  groupId           String
+  group             OrgGroup         @relation(fields: [groupId], references: [id])
+  source            String           @default("MANUAL") // MANUAL | SCHEDULED | REFERRED
+  assigneeId        String
+  assignee          Member           @relation(fields: [assigneeId], references: [id])
+  creatorId         String?
+  creator           Member?          @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+  priority          String           @default("MEDIUM") // HIGH | MEDIUM | LOW
+  status            String           @default("PENDING") // PENDING | STARTED | BLOCKED | DONE
   // Letter referral fields
-  letterNumber     String?
-  letterDate       String? // YYYY-MM-DD
-  refererId        String?
-  referer          Member?        @relation("TaskReferer", fields: [refererId], references: [id], onDelete: SetNull)
-  approvalStatus   String? // PENDING_APPROVAL | APPROVED | REJECTED (null = non-referred)
-  approverId       String?
-  approver         Member?        @relation("TaskApprover", fields: [approverId], references: [id], onDelete: SetNull)
-  approvedAt       DateTime?
+  letterNumber      String?
+  letterDate        String? // YYYY-MM-DD
+  refererId         String?
+  referer           Member?          @relation("TaskReferer", fields: [refererId], references: [id], onDelete: SetNull)
+  approvalStatus    String? // PENDING_APPROVAL | APPROVED | REJECTED (null = non-referred)
+  approverId        String?
+  approver          Member?          @relation("TaskApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  approvedAt        DateTime?
   // Timing
-  startTime        DateTime?
-  deadline         DateTime
-  link             String?
-  followUpReason   String?
-  startedAt        DateTime?
-  doneDescription  String?
-  doneAt           DateTime?
-  deletedAt        DateTime? // Soft delete — null = active, non-null = in trash
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  logs             FollowUpLog[]
-  workflowPrevious TaskRelation[] @relation("WorkflowNextTask")
-  workflowNext     TaskRelation[] @relation("WorkflowPreviousTask")
+  startTime         DateTime?
+  deadline          DateTime
+  link              String?
+  followUpReason    String?
+  startedAt         DateTime?
+  doneDescription   String?
+  doneAt            DateTime?
+  deletedAt         DateTime? // Soft delete — null = active, non-null = in trash
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  logs              FollowUpLog[]
+  workflowPrevious  TaskRelation[]   @relation("WorkflowNextTask")
+  workflowNext      TaskRelation[]   @relation("WorkflowPreviousTask")
+  meetingDecisionId String?
+  meetingDecision   MeetingDecision? @relation(fields: [meetingDecisionId], references: [id], onDelete: SetNull)
 
   @@index([assigneeId])
   @@index([creatorId])
@@ -166,6 +170,53 @@ model Task {
   @@index([approvalStatus])
   @@index([source])
   @@index([deletedAt])
+  @@index([meetingDecisionId])
+}
+
+// ---- Meeting minutes and task-backed decisions ----
+model MeetingMinute {
+  id          String            @id @default(cuid())
+  code        String            @unique
+  title       String
+  heldAt      DateTime
+  location    String?
+  agenda      String
+  notes       String?
+  secretaryId String
+  secretary   Member            @relation("MeetingMinuteSecretary", fields: [secretaryId], references: [id], onDelete: Restrict)
+  attendees   MeetingAttendee[]
+  decisions   MeetingDecision[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([heldAt])
+  @@index([secretaryId, createdAt])
+}
+
+model MeetingAttendee {
+  meetingMinuteId String
+  memberId        String
+  createdAt       DateTime      @default(now())
+  meetingMinute   MeetingMinute @relation(fields: [meetingMinuteId], references: [id], onDelete: Cascade)
+  member          Member        @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@id([meetingMinuteId, memberId])
+  @@index([memberId, createdAt])
+}
+
+model MeetingDecision {
+  id              String        @id @default(cuid())
+  meetingMinuteId String
+  text            String
+  deadline        DateTime
+  priority        String        @default("MEDIUM")
+  meetingMinute   MeetingMinute @relation(fields: [meetingMinuteId], references: [id], onDelete: Cascade)
+  tasks           Task[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([meetingMinuteId, createdAt])
+  @@index([deadline])
 }
 
 // Directed workflow edge: previousTask must be completed before nextTask.

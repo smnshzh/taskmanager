@@ -21,6 +21,7 @@ Task Manager یک برنامه تحت وب برای مدیریت کارهای ت
 - ساخت، تخصیص، پیگیری، تکمیل، حذف نرم و بازیابی تسک
 - زمان‌بندی تسک، الگوهای تکرارشونده، ارجاع نامه و تأیید/رد ارجاع
 - گردش‌کار وابسته بین تسک‌ها و نمایش Kanban، فهرست و گزارش‌ها
+- ثبت صورتجلسه برای همه کاربران، انتخاب حاضرین و تبدیل مصوبات چندمسئولی به تسک‌های قابل پیگیری
 - ورود گروهی داده از Excel
 - اعلان‌های مبتنی بر outbox با retry محدود، ثبت نتیجه و جلوگیری از ارسال تکراری
 - اتصال امن حساب بله با کد یک‌بارمصرف و webhook اعتبارسنجی‌شده
@@ -223,6 +224,7 @@ Core capabilities:
 - Task creation, assignment, tracking, completion, soft deletion, and restoration
 - Task schedules, recurring templates, letter referrals, and referral approval/rejection
 - Task dependency workflows plus Kanban, list, and reporting views
+- Meeting minutes for every role, with attendee selection and multi-owner decisions converted into trackable tasks
 - Excel bulk import
 - Database-backed notification outbox with finite retries, delivery logs, and deduplication
 - Secure Bale account linking through one-time codes and a validated webhook

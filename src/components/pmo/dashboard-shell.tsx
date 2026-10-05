@@ -21,6 +21,7 @@ import { OverviewView } from "./overview-view";
 import { KanbanView } from "./kanban-view";
 import { TaskListView } from "./task-list-view";
 import { WorkflowView } from "./workflow-view";
+import { MeetingMinutesView } from "@/features/meeting-minutes/components/meeting-minutes-view";
 import { SchedulerView } from "./scheduler-view";
 import { ReferredView } from "./referred-view";
 import { MyTasksView } from "./my-tasks-view";
@@ -57,6 +58,7 @@ import {
   ClipboardCheck,
   GitBranch,
   MessageCircle,
+  ClipboardList,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -77,6 +79,7 @@ const ALL_NAV: NavItem[] = [
   { key: "kanban", label: "کانبان", icon: KanbanSquare, desc: "نمودار کانبان تسک‌ها", permission: "panel:kanban" },
   { key: "list", label: "لیست تسک‌ها", icon: ListChecks, desc: "جدول با فیلترهای پیشرفته", permission: "panel:task-list" },
   { key: "workflow", label: "گردش‌کار", icon: GitBranch, desc: "ساخت و مشاهده ارتباط مرحله‌ای تسک‌ها", permission: "panel:workflow" },
+  { key: "meeting-minutes", label: "صورتجلسه", icon: ClipboardList, desc: "ثبت جلسه، حاضرین و تسک‌های مصوبات", permission: "panel:meeting-minutes" },
   { key: "scheduler", label: "زمان‌بندی", icon: CalendarClock, desc: "زمان‌بندی و قالب‌های تسک", permission: "panel:scheduler" },
   { key: "referred", label: "ارجاع نامه‌ای", icon: FileText, desc: "تسک‌های ارجاعی", permission: "panel:referrals" },
   { key: "mytasks", label: "کارهای من", icon: CheckSquare, desc: "تسک‌های شخصی من", permission: "panel:my-tasks" },
@@ -476,6 +479,7 @@ export function DashboardShell() {
             {view === "kanban" && <KanbanView />}
             {view === "list" && <TaskListView />}
             {view === "workflow" && <WorkflowView />}
+            {view === "meeting-minutes" && member.permissions.includes("panel:meeting-minutes") && <MeetingMinutesView />}
             {view === "scheduler" && member.permissions.includes("panel:scheduler") && <SchedulerView />}
             {view === "referred" && <ReferredView />}
             {view === "mytasks" && <MyTasksView />}

@@ -166,10 +166,19 @@ export type SerializedTask = {
   doneAt: string | null;
   createdAt: string;
   updatedAt: string;
+  meetingDecisionId: string | null;
+  meetingMinuteId: string | null;
+  meetingMinuteCode: string | null;
+  meetingMinuteTitle: string | null;
 };
 
 export function serializeTask(
-  task: TaskWithRelations
+  task: TaskWithRelations & {
+    meetingDecision?: {
+      id: string;
+      meetingMinute: { id: string; code: string; title: string };
+    } | null;
+  }
 ): SerializedTask {
   return {
     id: task.id,
@@ -207,6 +216,10 @@ export function serializeTask(
     doneAt: task.doneAt ? task.doneAt.toISOString() : null,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
+    meetingDecisionId: task.meetingDecisionId,
+    meetingMinuteId: task.meetingDecision?.meetingMinute.id ?? null,
+    meetingMinuteCode: task.meetingDecision?.meetingMinute.code ?? null,
+    meetingMinuteTitle: task.meetingDecision?.meetingMinute.title ?? null,
   };
 }
 

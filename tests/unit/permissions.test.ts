@@ -9,4 +9,12 @@ describe("access permissions", () => {
   it("ignores unknown permissions", () => expect(resolvePermissions("SPECIALIST", ["not:real"])).toEqual(resolvePermissions("SPECIALIST")));
   it("gives super admin every registered permission", () => expect(hasPermission("SUPER_ADMIN", [], "access-group:manage")).toBe(true));
   it("allows every active role to create tasks", () => expect(hasPermission("SPECIALIST", [], "task:create")).toBe(true));
+  it.each(["SUPER_ADMIN", "MANAGER", "SUPERVISOR", "SPECIALIST"])(
+    "allows %s to view and create meeting minutes",
+    (role) => {
+      expect(hasPermission(role, [], "panel:meeting-minutes")).toBe(true);
+      expect(hasPermission(role, [], "meeting:view")).toBe(true);
+      expect(hasPermission(role, [], "meeting:create")).toBe(true);
+    },
+  );
 });
